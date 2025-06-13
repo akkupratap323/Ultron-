@@ -2,7 +2,7 @@
 
 import { Loader2, Bot, X, Sparkles, Video, PhoneOff } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Chat as StreamChat } from "stream-chat-react";
 import ChatChannel from "./ChatChannel";
 import ChatSidebar from "./ChatSidebar";
@@ -46,6 +46,11 @@ export default function Chat(): JSX.Element {
   const chatClient = useInitializeChatClient();
   const { resolvedTheme } = useTheme();
 
+  // Connection state management to prevent multiple connections
+  const [connectionState, setConnectionState] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+  const connectionAttemptRef = useRef<boolean>(false);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Get user data from chat client
   const user = chatClient?.user ? {
     id: chatClient.user.id,
@@ -76,6 +81,87 @@ export default function Chat(): JSX.Element {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, [aiPanelOpen]);
+
+  // Enhanced connection management with rate limit handling
+  useEffect(() => {
+    if (!chatClient || !user?.id) return;
+    if (connectionState === 'connecting' || connectionAttemptRef.current) return;
+
+    const handleConnection = async (retryCount = 0) => {
+      if (connectionAttemptRef.current) return;
+      
+      connectionAttemptRef.current = true;
+      setConnectionState('connecting');
+
+      try {
+        // Check if already connected
+        if (chatClient.wsConnection?.isConnecting || chatClient.wsConnection?.isHealthy) {
+          console.log("Stream Chat already connected or connecting");
+          setConnectionState('connected');
+          connectionAttemptRef.current = false;
+          return;
+        }
+
+        // Attempt connection with rate limit handling
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Connection timeout'));
+          }, 10000);
+
+          chatClient.on('connection.changed', (event) => {
+            if (event.online) {
+              clearTimeout(timeout);
+              resolve(event);
+            }
+          });
+
+          chatClient.on('connection.error', (error) => {
+            clearTimeout(timeout);
+            reject(error);
+          });
+        });
+
+        setConnectionState('connected');
+        console.log("✅ Stream Chat connected successfully");
+
+      } catch (error: any) {
+        console.error("❌ Stream Chat connection error:", error);
+        
+        // Handle rate limit (429) errors with exponential backoff
+        if (error.code === 9 || (error.message && error.message.includes('429'))) {
+          if (retryCount < 3) {
+            const backoffDelay = Math.pow(2, retryCount) * 2000; // 2s, 4s, 8s
+            console.log(`🔄 Rate limited, retrying in ${backoffDelay}ms (attempt ${retryCount + 1}/3)`);
+            
+            retryTimeoutRef.current = setTimeout(() => {
+              connectionAttemptRef.current = false;
+              handleConnection(retryCount + 1);
+            }, backoffDelay);
+            
+            return;
+          } else {
+            console.error("❌ Max retry attempts reached for rate limit");
+          }
+        }
+        
+        setConnectionState('disconnected');
+      } finally {
+        if (retryCount === 0) { // Only reset on initial attempt
+          connectionAttemptRef.current = false;
+        }
+      }
+    };
+
+    handleConnection();
+
+    // Cleanup function
+    return () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+      }
+      connectionAttemptRef.current = false;
+    };
+  }, [chatClient, user?.id, connectionState]);
 
   const startVideoCall = async () => {
     if (!videoClient || !user?.id) {
@@ -114,8 +200,8 @@ export default function Chat(): JSX.Element {
     setVideoCallActive(false);
   };
 
-  // Show loader while clients are initializing
-  if (!chatClient || !user?.id || videoClientLoading || !videoClient) {
+  // Enhanced loading conditions with connection state
+  if (!chatClient || !user?.id || connectionState !== 'connected' || videoClientLoading || !videoClient) {
     return (
       <div className="flex flex-col items-center justify-center h-full py-16">
         <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
@@ -123,6 +209,8 @@ export default function Chat(): JSX.Element {
         <span className="text-sm text-muted-foreground mt-2">
           {!chatClient ? "Initializing chat..." : 
            !user?.id ? "Loading user..." :
+           connectionState === 'connecting' ? "Connecting to chat..." :
+           connectionState === 'disconnected' ? "Reconnecting..." :
            videoClientLoading ? "Setting up video..." : 
            "Almost ready..."}
         </span>
