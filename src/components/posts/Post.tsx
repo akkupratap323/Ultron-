@@ -5,7 +5,6 @@ import { PostData } from "@/lib/types";
 import { cn, formatRelativeDate } from "@/lib/utils";
 import { Media } from "@prisma/client";
 import { MessageSquare } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import Comments from "../comments/Comments";
@@ -15,6 +14,7 @@ import UserTooltip from "../UserTooltip";
 import BookmarkButton from "./BookmarkButton";
 import LikeButton from "./LikeButton";
 import PostMoreButton from "./PostMoreButton";
+import SafePostImage from "@/components/SafePostImage";
 
 interface PostProps {
   post: PostData;
@@ -120,11 +120,9 @@ interface MediaPreviewProps {
 function MediaPreview({ media }: MediaPreviewProps) {
   if (media.type === "IMAGE") {
     return (
-      <Image
+      <SafePostImage
         src={media.url}
         alt="Attachment"
-        width={500}
-        height={500}
         className="mx-auto size-fit max-h-[30rem] rounded-2xl"
       />
     );

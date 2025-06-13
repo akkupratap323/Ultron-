@@ -1,24 +1,35 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { StreamVideoClient, User } from '@stream-io/video-react-sdk';
 
 export const useVideoClient = (user: User | undefined) => {
   const [videoClient, setVideoClient] = useState<StreamVideoClient | undefined>();
   const [isLoading, setIsLoading] = useState(false);
+  const clientRef = useRef<StreamVideoClient | undefined>();
 
   useEffect(() => {
+    // Wait for user to be available
     if (!user?.id) {
-      console.warn("User or user.id is missing in useVideoClient");
+      console.log("❌ User or user.id is missing in useVideoClient");
+      return;
+    }
+
+    // Don't create multiple clients for the same user
+    if (clientRef.current) {
+      console.log("✅ Video client already exists for user:", user.id);
       return;
     }
 
     const initializeClient = async () => {
       setIsLoading(true);
       try {
-        const client = new StreamVideoClient({
+        console.log("🎥 Initializing video client for user:", user.id);
+        
+        // Use getOrCreateInstance to prevent duplicate clients
+        const client = StreamVideoClient.getOrCreateInstance({
           apiKey: process.env.NEXT_PUBLIC_STREAM_API_KEY!,
           user,
           tokenProvider: async () => {
-            console.log("Requesting video token for user:", user.id);
+            console.log("🔑 Requesting video token for user:", user.id);
             
             const response = await fetch('/api/video-token', {
               method: 'POST',
@@ -38,6 +49,7 @@ export const useVideoClient = (user: User | undefined) => {
           },
         });
 
+        clientRef.current = client;
         setVideoClient(client);
         console.log("✅ Video client initialized successfully");
       } catch (error) {
@@ -50,12 +62,19 @@ export const useVideoClient = (user: User | undefined) => {
     initializeClient();
 
     return () => {
-      if (videoClient) {
-        videoClient.disconnectUser();
+      // Only disconnect if this hook instance created the client
+      if (clientRef.current) {
+        console.log("🧹 Cleaning up video client");
+        try {
+          clientRef.current.disconnectUser();
+        } catch (error) {
+          console.warn("Error disconnecting video client:", error);
+        }
+        clientRef.current = undefined;
         setVideoClient(undefined);
       }
     };
-  }, [user?.id, videoClient]); // Fixed: Added missing dependencies
+  }, [user?.id]); // Only depend on user.id to prevent unnecessary re-runs
 
   return { videoClient, isLoading };
 };

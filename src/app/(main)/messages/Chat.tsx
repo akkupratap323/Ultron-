@@ -34,7 +34,6 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
   onTypingChange,
   isMobile
 }) => {
-  // Your existing AI panel implementation
   return (
     <div className="h-full bg-background border-l border-border flex flex-col">
       <div className="p-4 border-b">
@@ -52,7 +51,9 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
             <span>AI is thinking...</span>
           </div>
         )}
-        {/* Your AI chat implementation */}
+        <div className="text-center text-muted-foreground">
+          <p>AI Assistant is ready to help!</p>
+        </div>
       </div>
     </div>
   );
@@ -62,10 +63,12 @@ export default function Chat(): JSX.Element {
   const chatClient = useInitializeChatClient();
   const { resolvedTheme } = useTheme();
 
-  // Connection state management
-  const [connectionState, setConnectionState] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
-  const connectionAttemptRef = useRef<boolean>(false);
-  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Debug logging
+  console.log("🔍 Chat render - chatClient:", !!chatClient);
+  console.log("🔍 Chat render - user:", chatClient?.user?.id);
+
+  // Simplified connection state - remove complex connection management
+  const [isReady, setIsReady] = useState(false);
 
   // Get user data from chat client
   const user = chatClient?.user ? {
@@ -98,97 +101,20 @@ export default function Chat(): JSX.Element {
     return () => window.removeEventListener('resize', checkMobile);
   }, [aiPanelOpen]);
 
-  // Enhanced connection management
+  // Simplified ready state management
   useEffect(() => {
-    if (!chatClient || !user?.id) {
-      setConnectionState('disconnected');
-      return;
+    if (chatClient && user?.id) {
+      // Add a small delay to ensure connection is stable
+      const timer = setTimeout(() => {
+        setIsReady(true);
+        console.log("✅ Chat is ready");
+      }, 1000);
+
+      return () => clearTimeout(timer);
+    } else {
+      setIsReady(false);
     }
-    
-    if (connectionState === 'connecting' || connectionAttemptRef.current) return;
-
-    const handleConnection = async (retryCount = 0) => {
-      if (connectionAttemptRef.current) return;
-      
-      connectionAttemptRef.current = true;
-      setConnectionState('connecting');
-
-      try {
-        // Check if already connected
-        if (chatClient.wsConnection?.isConnecting || chatClient.wsConnection?.isHealthy) {
-          console.log("Stream Chat already connected or connecting");
-          setConnectionState('connected');
-          connectionAttemptRef.current = false;
-          return;
-        }
-
-        // Monitor connection state
-        const connectionPromise = new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            reject(new Error('Connection timeout'));
-          }, 15000);
-
-          const handleConnectionChanged = (event: any) => {
-            if (event.online) {
-              clearTimeout(timeout);
-              chatClient.off('connection.changed', handleConnectionChanged);
-              resolve(event);
-            }
-          };
-
-          const handleConnectionError = (error: any) => {
-            clearTimeout(timeout);
-            chatClient.off('connection.changed', handleConnectionChanged);
-            chatClient.off('connection.error', handleConnectionError);
-            reject(error);
-          };
-
-          chatClient.on('connection.changed', handleConnectionChanged);
-          chatClient.on('connection.error', handleConnectionError);
-        });
-
-        await connectionPromise;
-        setConnectionState('connected');
-        console.log("✅ Stream Chat connected successfully");
-
-      } catch (error: any) {
-        console.error("❌ Stream Chat connection error:", error);
-        
-        // Handle rate limit (429) errors with exponential backoff
-        if (error.code === 9 || (error.message && error.message.includes('429'))) {
-          if (retryCount < 3) {
-            const backoffDelay = Math.pow(2, retryCount) * 2000; // 2s, 4s, 8s
-            console.log(`🔄 Rate limited, retrying in ${backoffDelay}ms (attempt ${retryCount + 1}/3)`);
-            
-            retryTimeoutRef.current = setTimeout(() => {
-              connectionAttemptRef.current = false;
-              handleConnection(retryCount + 1);
-            }, backoffDelay);
-            
-            return;
-          } else {
-            console.error("❌ Max retry attempts reached for rate limit");
-          }
-        }
-        
-        setConnectionState('disconnected');
-      } finally {
-        if (retryCount === 0) {
-          connectionAttemptRef.current = false;
-        }
-      }
-    };
-
-    handleConnection();
-
-    // Cleanup function
-    return () => {
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
-      }
-      connectionAttemptRef.current = false;
-    };
-  }, [chatClient, user?.id, connectionState]);
+  }, [chatClient, user?.id]);
 
   const startVideoCall = async () => {
     if (!videoClient || !user?.id) {
@@ -227,20 +153,30 @@ export default function Chat(): JSX.Element {
     setVideoCallActive(false);
   };
 
-  // Enhanced loading conditions with connection state
-  if (!chatClient || !user?.id || connectionState !== 'connected' || videoClientLoading || !videoClient) {
+  // Simplified loading conditions
+  if (!chatClient) {
     return (
       <div className="flex flex-col items-center justify-center h-full py-16">
         <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
-        <span className="text-lg">Loading chat and video features...</span>
-        <span className="text-sm text-muted-foreground mt-2">
-          {!chatClient ? "Initializing chat..." : 
-           !user?.id ? "Loading user..." :
-           connectionState === 'connecting' ? "Connecting to chat..." :
-           connectionState === 'disconnected' ? "Reconnecting..." :
-           videoClientLoading ? "Setting up video..." : 
-           "Almost ready..."}
-        </span>
+        <span className="text-lg">Initializing chat client...</span>
+      </div>
+    );
+  }
+
+  if (!user?.id) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full py-16">
+        <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+        <span className="text-lg">Loading user data...</span>
+      </div>
+    );
+  }
+
+  if (!isReady) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full py-16">
+        <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+        <span className="text-lg">Connecting to chat...</span>
       </div>
     );
   }
