@@ -1,12 +1,12 @@
 "use client";
 
-import { Loader2, Bot, X, Sparkles, Video, PhoneOff } from "lucide-react";
+import { Loader2, Bot, X, Sparkles, Video } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useState, useEffect, useRef } from "react";
 import { Chat as StreamChat } from "stream-chat-react";
 import ChatChannel from "./ChatChannel";
 import ChatSidebar from "./ChatSidebar";
-import useInitializeChatClient from "./useInitializeChatClient";
+import useInitializeChatClient from "@/hooks/useInitializeChatClient";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -20,7 +20,7 @@ import {
 } from '@stream-io/video-react-sdk';
 import '@stream-io/video-react-sdk/dist/css/styles.css';
 
-// AI Assistant Panel (keeping your existing implementation)
+// AI Assistant Panel
 interface AIAssistantPanelProps {
   onClose: () => void;
   isTyping: boolean;
@@ -37,7 +37,23 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
   // Your existing AI panel implementation
   return (
     <div className="h-full bg-background border-l border-border flex flex-col">
-      {/* Your existing AI panel JSX */}
+      <div className="p-4 border-b">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">AI Assistant</h2>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+      <div className="flex-1 p-4">
+        {isTyping && (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>AI is thinking...</span>
+          </div>
+        )}
+        {/* Your AI chat implementation */}
+      </div>
     </div>
   );
 };
@@ -46,7 +62,7 @@ export default function Chat(): JSX.Element {
   const chatClient = useInitializeChatClient();
   const { resolvedTheme } = useTheme();
 
-  // Connection state management to prevent multiple connections
+  // Connection state management
   const [connectionState, setConnectionState] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const connectionAttemptRef = useRef<boolean>(false);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -82,9 +98,13 @@ export default function Chat(): JSX.Element {
     return () => window.removeEventListener('resize', checkMobile);
   }, [aiPanelOpen]);
 
-  // Enhanced connection management with rate limit handling
+  // Enhanced connection management
   useEffect(() => {
-    if (!chatClient || !user?.id) return;
+    if (!chatClient || !user?.id) {
+      setConnectionState('disconnected');
+      return;
+    }
+    
     if (connectionState === 'connecting' || connectionAttemptRef.current) return;
 
     const handleConnection = async (retryCount = 0) => {
@@ -102,25 +122,32 @@ export default function Chat(): JSX.Element {
           return;
         }
 
-        // Attempt connection with rate limit handling
-        await new Promise((resolve, reject) => {
+        // Monitor connection state
+        const connectionPromise = new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
             reject(new Error('Connection timeout'));
-          }, 10000);
+          }, 15000);
 
-          chatClient.on('connection.changed', (event) => {
+          const handleConnectionChanged = (event: any) => {
             if (event.online) {
               clearTimeout(timeout);
+              chatClient.off('connection.changed', handleConnectionChanged);
               resolve(event);
             }
-          });
+          };
 
-          chatClient.on('connection.error', (error) => {
+          const handleConnectionError = (error: any) => {
             clearTimeout(timeout);
+            chatClient.off('connection.changed', handleConnectionChanged);
+            chatClient.off('connection.error', handleConnectionError);
             reject(error);
-          });
+          };
+
+          chatClient.on('connection.changed', handleConnectionChanged);
+          chatClient.on('connection.error', handleConnectionError);
         });
 
+        await connectionPromise;
         setConnectionState('connected');
         console.log("✅ Stream Chat connected successfully");
 
@@ -146,7 +173,7 @@ export default function Chat(): JSX.Element {
         
         setConnectionState('disconnected');
       } finally {
-        if (retryCount === 0) { // Only reset on initial attempt
+        if (retryCount === 0) {
           connectionAttemptRef.current = false;
         }
       }
