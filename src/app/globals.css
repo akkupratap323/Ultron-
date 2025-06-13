@@ -1,0 +1,245 @@
+@import "stream-chat-react/dist/css/v2/index.css";
+
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 224, 5%, 95%;
+    --foreground: 240 10% 3.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+
+    --primary: 142.1 76.2% 36.3%;
+    --primary-foreground: 355.7 100% 97.3%;
+
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 142.1 76.2% 36.3%;
+
+    --radius: 1rem;
+  }
+
+  .dark {
+    --background: 20 14.3% 4.1%;
+    --foreground: 0 0% 95%;
+
+    --card: 24 9.8% 10%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 0 0% 9%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 142.1 70.6% 45.3%;
+    --primary-foreground: 144.9 80.4% 10%;
+
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 0 0% 15%;
+    --muted-foreground: 240 5% 64.9%;
+
+    --accent: 12 6.5% 15.1%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 0 85.7% 97.3%;
+
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 142.4 71.8% 29.2%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  
+  /* Improve scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-muted;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground;
+  }
+}
+
+/* Stream Chat Customizations */
+@layer components {
+  .str-chat {
+    --str-chat__font-family: inherit;
+    --str-chat__primary-color: theme(colors.primary.DEFAULT);
+    --str-chat__on-primary-color: theme(colors.primary.foreground);
+    --str-chat__active-primary-color: theme(colors.primary.foreground);
+    --str-chat__primary-color-low-emphasis: color-mix(
+      in hsl,
+      hsl(var(--primary)) 10%,
+      transparent
+    );
+    --str-chat__background-color: theme(colors.card.DEFAULT);
+    --str-chat__secondary-background-color: theme(colors.card.DEFAULT);
+    --str-chat__message-textarea-background-color: theme(colors.background);
+    --str-chat__channel-preview-active-background-color: theme(
+      colors.accent.DEFAULT
+    );
+    --str-chat__channel-preview-hover-background-color: var(
+      --str-chat__channel-preview-active-background-color
+    );
+    --str-chat__secondary-surface-color: theme(colors.muted.DEFAULT);
+    --str-chat__own-message-bubble-color: theme(colors.primary.foreground);
+    --str-chat__primary-surface-color: theme(colors.primary.DEFAULT);
+    --str-chat__primary-surface-color-low-emphasis: var(
+      --str-chat__primary-color-low-emphasis
+    );
+    --str-chat__disabled-color: theme(colors.muted.DEFAULT);
+    --str-chat__cta-button-border-radius: var(--radius);
+    
+    /* Enhanced border radius consistency */
+    --str-chat__border-radius-md: var(--radius);
+    --str-chat__border-radius-sm: calc(var(--radius) - 2px);
+    
+    /* Improved spacing */
+    --str-chat__spacing-px: 1px;
+    --str-chat__spacing-xs: 0.25rem;
+    --str-chat__spacing-sm: 0.5rem;
+    --str-chat__spacing-md: 1rem;
+    --str-chat__spacing-lg: 1.5rem;
+  }
+
+  .str-chat-channel-list {
+    border-right: none;
+    @apply border-r border-border;
+  }
+
+  .str-chat__channel-list-react .str-chat__channel-list-messenger-react {
+    padding-bottom: 0;
+  }
+
+  .str-chat__channel-search-bar-button--exit-search {
+    display: none;
+  }
+  
+  /* Enhanced message styling */
+  .str-chat__message-simple__text {
+    @apply text-sm leading-relaxed;
+  }
+  
+  /* Improved channel list styling */
+  .str-chat__channel-preview-messenger {
+    @apply transition-colors duration-200;
+  }
+  
+  .str-chat__channel-preview-messenger:hover {
+    @apply bg-accent/50;
+  }
+  
+  /* Better input styling */
+  .str-chat__message-input {
+    @apply bg-background border-input;
+  }
+  
+  /* Enhanced avatar styling */
+  .str-chat__avatar {
+    @apply ring-2 ring-background;
+  }
+  
+  /* Improved typing indicator */
+  .str-chat__typing-indicator {
+    @apply text-muted-foreground text-xs;
+  }
+}
+
+/* Dark mode specific Stream Chat adjustments */
+@layer components {
+  .dark .str-chat {
+    --str-chat__text-color: theme(colors.foreground);
+    --str-chat__grey-gainsboro: theme(colors.muted.DEFAULT);
+    --str-chat__border-color: theme(colors.border);
+  }
+}
+
+/* Performance optimizations */
+@layer utilities {
+  .gpu-accelerated {
+    transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .smooth-scroll {
+    scroll-behavior: smooth;
+  }
+}
+/* Ensure Stream Chat message input is always accessible */
+.str-chat__message-input {
+  position: relative !important;
+  z-index: 10 !important;
+  background: hsl(var(--background)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: var(--radius) !important;
+  min-height: 44px !important;
+}
+
+.str-chat__message-input-inner {
+  min-height: 40px !important;
+  padding: 8px 12px !important;
+}
+
+.str-chat__message-input textarea {
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  resize: none !important;
+  min-height: 24px !important;
+  max-height: 120px !important;
+}
+
+/* Ensure message input container has proper spacing */
+.str-chat__message-input-wrapper {
+  padding: 12px !important;
+  background: hsl(var(--background)) !important;
+  border-top: 1px solid hsl(var(--border)) !important;
+}
+
+/* Fix for message list to not overlap input */
+.str-chat__message-list {
+  padding-bottom: 80px !important;
+}
+
+/* Ensure proper scrolling */
+.str-chat__message-list-scroll {
+  height: calc(100% - 80px) !important;
+  overflow-y: auto !important;
+}
