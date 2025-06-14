@@ -19,6 +19,12 @@ export function useSubmitPostMutation() {
   const mutation = useMutation({
     mutationFn: submitPost,
     onSuccess: async (newPost) => {
+      // ✅ Add null check for user before accessing user.id
+      if (!user) {
+        // If user is null, skip updating queries that depend on user.id
+        return;
+      }
+
       const queryFilter = {
         queryKey: ["post-feed"],
         predicate(query) {

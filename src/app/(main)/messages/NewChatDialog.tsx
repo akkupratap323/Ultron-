@@ -43,6 +43,10 @@ export default function NewChatDialog({
       if (!client) {
         throw new Error("Stream client not initialized");
       }
+      if (!loggedInUser?.id) {
+        throw new Error("User not logged in");
+      }
+      
       return client.queryUsers(
         {
           id: { $ne: loggedInUser.id },
@@ -68,12 +72,15 @@ export default function NewChatDialog({
       if (!client) {
         throw new Error("Stream client not initialized");
       }
+      if (!loggedInUser?.id) {
+        throw new Error("User not logged in");
+      }
       
       const channel = client.channel("messaging", {
         members: [loggedInUser.id, ...selectedUsers.map((u) => u.id)],
         name:
           selectedUsers.length > 1
-            ? loggedInUser.displayName +
+            ? (loggedInUser.displayName || loggedInUser.username || "User") +
               ", " +
               selectedUsers.map((u) => u.name).join(", ")
             : undefined,
@@ -107,6 +114,22 @@ export default function NewChatDialog({
     }
     mutation.mutate();
   };
+
+  // Early return if user is not logged in
+  if (!loggedInUser) {
+    return (
+      <Dialog open onOpenChange={onOpenChange}>
+        <DialogContent className="bg-card p-6">
+          <DialogHeader>
+            <DialogTitle>Authentication Required</DialogTitle>
+            <DialogDescription>
+              Please log in to start a new chat.
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open onOpenChange={onOpenChange}>

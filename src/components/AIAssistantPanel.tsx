@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Loader2, Bot, X, Sparkles } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Loader2, Bot, X, Sparkles, Send, Zap, Globe, Edit3, FileText, Copy, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -13,6 +13,7 @@ interface Message {
   type: 'user' | 'ai';
   content: string;
   timestamp: Date;
+  isStreaming?: boolean;
 }
 
 interface AIAssistantPanelProps {
@@ -27,13 +28,30 @@ export function AIAssistantPanel({ onClose, isTyping, onTypingChange, isMobile }
     {
       id: 1,
       type: 'ai',
-      content: 'Hi! I\'m your AI assistant powered by Gemini. I can help you write better messages, translate text, or answer any questions you have!',
+      content: '👋 Hey there! I\'m your AI companion powered by Gemini. Ready to help you create amazing content, translate languages, or chat about anything!',
       timestamp: new Date()
     }
   ]);
   const [input, setInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (scrollAreaRef.current) {
+      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+    }
+  }, [messages, isLoading]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [input]);
 
   const sendMessage = async (): Promise<void> => {
     if (!input.trim() || isLoading) return;
@@ -94,7 +112,7 @@ export function AIAssistantPanel({ onClose, isTyping, onTypingChange, isMobile }
       const errorMessage: Message = {
         id: Date.now() + 1,
         type: 'ai',
-        content: `Sorry, I encountered an error: ${errorMsg}. Please try again.`,
+        content: `Oops! Something went wrong: ${errorMsg}. Let's try that again! 🔄`,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -111,106 +129,159 @@ export function AIAssistantPanel({ onClose, isTyping, onTypingChange, isMobile }
     }
   };
 
-  // Quick action handlers
-  const handleQuickAction = (action: string): void => {
-    switch (action) {
-      case 'help':
-        setInput('Help me write a professional message');
-        break;
-      case 'translate':
-        setInput('Translate this text to Spanish: ');
-        break;
-      case 'improve':
-        setInput('Improve this message: ');
-        break;
-      case 'summarize':
-        setInput('Summarize this conversation');
-        break;
-      default:
-        break;
-    }
+  // Enhanced quick actions with better UX
+  const quickActions = [
+    { id: 'help', icon: Edit3, label: 'Write', prompt: 'Help me write a professional message about', color: 'bg-blue-500/10 text-blue-600 border-blue-200' },
+    { id: 'translate', icon: Globe, label: 'Translate', prompt: 'Translate this text to Spanish: ', color: 'bg-green-500/10 text-green-600 border-green-200' },
+    { id: 'improve', icon: Sparkles, label: 'Enhance', prompt: 'Make this message better and more engaging: ', color: 'bg-purple-500/10 text-purple-600 border-purple-200' },
+    { id: 'summarize', icon: FileText, label: 'Summarize', prompt: 'Summarize our conversation so far', color: 'bg-orange-500/10 text-orange-600 border-orange-200' },
+  ];
+
+  const handleQuickAction = (prompt: string): void => {
+    setInput(prompt);
+    textareaRef.current?.focus();
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    // You could add a toast notification here
   };
 
   return (
-    <div className="flex flex-col h-full bg-background border-l border-border">
-      {/* AI Header */}
+    <div className="flex flex-col h-full bg-gradient-to-b from-background to-background/95">
+      {/* Modern Header with Glassmorphism */}
       <div className={cn(
-        "flex items-center justify-between border-b border-border bg-background/95 backdrop-blur-sm",
-        isMobile ? "p-4" : "p-3"
+        "flex items-center justify-between border-b border-border/50 bg-background/80 backdrop-blur-xl",
+        "shadow-sm",
+        isMobile ? "p-4" : "p-4"
       )}>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <div className="relative">
-            <Bot className="h-5 w-5 text-purple-500" />
-            <Sparkles className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400 animate-pulse" />
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+              <Bot className="h-5 w-5 text-white" />
+            </div>
+            <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-background flex items-center justify-center">
+              <Sparkles className="h-2 w-2 text-white" />
+            </div>
           </div>
           <div>
-            <span className="font-medium text-sm">Gemini AI Assistant</span>
-            {isMobile && (
-              <p className="text-xs text-muted-foreground">
-                {isTyping ? 'Thinking...' : 'Powered by Google Gemini'}
-              </p>
-            )}
+            <h3 className="font-semibold text-base">Gemini AI</h3>
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              {isTyping ? 'Thinking...' : 'Online'}
+            </p>
           </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={onClose}>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={onClose}
+          className="hover:bg-red-500/10 hover:text-red-600 transition-colors"
+        >
           <X className="h-4 w-4" />
         </Button>
       </div>
 
-      {/* Error Display */}
+      {/* Error Display with Better Styling */}
       {error && (
-        <div className="p-3 bg-destructive/10 border-b border-destructive/20">
-          <p className="text-sm text-destructive">{error}</p>
+        <div className="mx-4 mt-3 p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <p className="text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
+            <span className="text-red-500">⚠️</span>
+            {error}
+          </p>
         </div>
       )}
 
-      {/* Messages */}
-      <ScrollArea className={cn("flex-1", isMobile ? "p-4" : "p-3")}>
-        <div className={cn("space-y-3", isMobile && "space-y-4")}>
-          {messages.map((message) => (
+      {/* Messages with Enhanced Styling */}
+      <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+        <div className="space-y-4">
+          {messages.map((message, index) => (
             <div
               key={message.id}
               className={cn(
-                "flex",
+                "flex gap-3 group",
                 message.type === 'user' ? 'justify-end' : 'justify-start'
               )}
             >
-              <div
-                className={cn(
-                  "rounded-lg text-sm",
-                  isMobile ? "max-w-[85%] p-3" : "max-w-[80%] p-2",
-                  message.type === 'user'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted border border-border/50'
-                )}
-              >
+              {message.type === 'ai' && (
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0 mt-1">
+                  <Bot className="h-4 w-4 text-white" />
+                </div>
+              )}
+              
+              <div className={cn(
+                "relative max-w-[85%] rounded-2xl px-4 py-3 shadow-sm transition-all duration-200",
+                message.type === 'user'
+                  ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white ml-auto'
+                  : 'bg-white dark:bg-gray-800 border border-border/50 hover:shadow-md'
+              )}>
                 {message.type === 'ai' && (
-                  <div className="flex items-center gap-1 mb-1 opacity-70">
-                    <Bot className="h-3 w-3" />
+                  <div className="flex items-center gap-1 mb-2 opacity-70">
+                    <Sparkles className="h-3 w-3" />
                     <span className="text-xs font-medium">Gemini</span>
                   </div>
                 )}
-                <p className="whitespace-pre-wrap">{message.content}</p>
-                <p className="text-xs opacity-60 mt-1">
-                  {message.timestamp.toLocaleTimeString()}
+                
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                  {message.content}
                 </p>
+                
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-xs opacity-60">
+                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  
+                  {message.type === 'ai' && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyToClipboard(message.content)}
+                        className="h-6 w-6 p-0 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 hover:bg-green-100 dark:hover:bg-green-900"
+                      >
+                        <ThumbsUp className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 hover:bg-red-100 dark:hover:bg-red-900"
+                      >
+                        <ThumbsDown className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
+              
+              {message.type === 'user' && (
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0 mt-1">
+                  <span className="text-white text-sm font-medium">U</span>
+                </div>
+              )}
             </div>
           ))}
           
+          {/* Enhanced Loading Animation */}
           {isLoading && (
-            <div className="flex justify-start">
-              <div className={cn(
-                "bg-muted border border-border/50 rounded-lg",
-                isMobile ? "p-3" : "p-2"
-              )}>
-                <div className="flex items-center gap-2">
+            <div className="flex gap-3">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+                <Bot className="h-4 w-4 text-white" />
+              </div>
+              <div className="bg-white dark:bg-gray-800 border border-border/50 rounded-2xl px-4 py-3 shadow-sm">
+                <div className="flex items-center gap-3">
                   <div className="flex space-x-1">
                     <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"></div>
                     <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
                     <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
                   </div>
-                  <span className="text-xs text-muted-foreground">Gemini is thinking...</span>
+                  <span className="text-xs text-muted-foreground">Gemini is crafting a response...</span>
                 </div>
               </div>
             </div>
@@ -218,77 +289,73 @@ export function AIAssistantPanel({ onClose, isTyping, onTypingChange, isMobile }
         </div>
       </ScrollArea>
 
-      {/* AI Input */}
-      <div className={cn(
-        "border-t border-border bg-background/95 backdrop-blur-sm",
-        isMobile ? "p-4" : "p-3"
-      )}>
-        {/* Quick Actions */}
-        <div className="flex gap-1 mb-3 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleQuickAction('help')}
-            className="text-xs h-7"
-          >
-            💬 Help Write
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleQuickAction('translate')}
-            className="text-xs h-7"
-          >
-            🌐 Translate
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleQuickAction('improve')}
-            className="text-xs h-7"
-          >
-            ✨ Improve
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleQuickAction('summarize')}
-            className="text-xs h-7"
-          >
-            📝 Summarize
-          </Button>
+      {/* Enhanced Input Section */}
+      <div className="border-t border-border/50 bg-background/80 backdrop-blur-xl p-4">
+        {/* Quick Actions with Better Design */}
+        <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+          {quickActions.map((action) => (
+            <Button
+              key={action.id}
+              variant="outline"
+              size="sm"
+              onClick={() => handleQuickAction(action.prompt)}
+              className={cn(
+                "flex-shrink-0 h-8 text-xs font-medium transition-all duration-200 hover:scale-105",
+                action.color
+              )}
+            >
+              <action.icon className="h-3 w-3 mr-1" />
+              {action.label}
+            </Button>
+          ))}
         </div>
 
-        <div className="flex gap-2">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Ask Gemini anything..."
-            className={cn(
-              "flex-1 resize-none text-sm border-border/50 focus:border-primary",
-              isMobile 
-                ? "min-h-[44px] max-h-[120px] text-base"
-                : "min-h-[36px] max-h-[100px]"
-            )}
-            disabled={isLoading}
-          />
+        {/* Input Area with Modern Design */}
+        <div className="flex gap-3 items-end">
+          <div className="flex-1 relative">
+            <Textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Ask Gemini anything... ✨"
+              className={cn(
+                "resize-none border-border/50 focus:border-purple-500 transition-all duration-200",
+                "bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm",
+                "rounded-2xl px-4 py-3 pr-12",
+                isMobile 
+                  ? "min-h-[48px] max-h-[120px] text-base"
+                  : "min-h-[44px] max-h-[100px] text-sm"
+              )}
+              disabled={isLoading}
+              rows={1}
+            />
+            <div className="absolute right-3 bottom-3 text-xs text-muted-foreground">
+              {input.length}/2000
+            </div>
+          </div>
+          
           <Button
             onClick={sendMessage}
             disabled={!input.trim() || isLoading}
             size={isMobile ? "default" : "sm"}
             className={cn(
-              "self-end",
-              isMobile && "px-4 py-2 h-[44px]"
+              "rounded-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600",
+              "shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105",
+              isMobile ? "h-12 w-12" : "h-11 w-11"
             )}
           >
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              "Send"
+              <Send className="h-4 w-4" />
             )}
           </Button>
         </div>
+        
+        <p className="text-xs text-muted-foreground mt-2 text-center">
+          Press Enter to send • Shift+Enter for new line
+        </p>
       </div>
     </div>
   );

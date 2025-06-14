@@ -8,6 +8,12 @@ export default function useInitializeChatClient() {
   const [chatClient, setChatClient] = useState<StreamChat | null>(null);
 
   useEffect(() => {
+    // ✅ Early return if user is not available
+    if (!user?.id) {
+      console.log("User not available, skipping chat client initialization");
+      return;
+    }
+
     const client = StreamChat.getInstance(process.env.NEXT_PUBLIC_STREAM_API_KEY!);
 
     client
@@ -34,7 +40,7 @@ export default function useInitializeChatClient() {
         .catch((error) => console.error("Failed to disconnect user", error))
         .then(() => console.log("Connection closed"));
     };
-  }, [user.id, user.username, user.displayName, user.avatarUrl]);
+  }, [user?.id, user?.username, user?.displayName, user?.avatarUrl]);
 
   return chatClient;
 }
