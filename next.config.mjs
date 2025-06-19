@@ -8,6 +8,10 @@ const nextConfig = {
     optimizeCss: true,
   },
   
+  transpilePackages: [
+    "@jitsi/react-sdk",
+  ],
+  
   serverExternalPackages: [
     "@node-rs/argon2",
     "sharp",
@@ -16,25 +20,20 @@ const nextConfig = {
   
   images: {
     remotePatterns: [
-      // UploadThing domains for your file uploads
+      // UploadThing v7 domains - UPDATED
       {
         protocol: "https",
         hostname: "utfs.io",
-        pathname: `/a/${process.env.NEXT_PUBLIC_UPLOADTHING_APP_ID}/*`,
-      },
-      {
-        protocol: "https",
-        hostname: "2n1kjnhrvg.ufs.sh",
         port: "",
         pathname: "/**",
       },
       {
         protocol: "https",
-        hostname: `${process.env.NEXT_PUBLIC_UPLOADTHING_APP_ID}.ufs.sh`,
+        hostname: "uploadthing-prod.s3.us-west-2.amazonaws.com",
         port: "",
         pathname: "/**",
       },
-      // Wildcard for all UploadThing subdomains
+      // Wildcard for all UploadThing subdomains (v7 compatible)
       {
         protocol: "https",
         hostname: "*.ufs.sh",
@@ -84,6 +83,26 @@ const nextConfig = {
       {
         protocol: "https",
         hostname: "stream-io-cdn.com",
+        port: "",
+        pathname: "/**",
+      },
+      
+      // Jitsi Meet related domains for video calling
+      {
+        protocol: "https",
+        hostname: "meet.jit.si",
+        port: "",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "8x8.vc",
+        port: "",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "jitsi.org",
         port: "",
         pathname: "/**",
       },
@@ -157,39 +176,35 @@ const nextConfig = {
       },
     ],
     
-    // Enhanced image optimization settings
     formats: ['image/avif', 'image/webp'],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
     minimumCacheTTL: 60,
     dangerouslyAllowSVG: true,
-    contentDispositionType: 'inline', // Changed from 'attachment' to allow inline display
+    contentDispositionType: 'inline',
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
-    
-    // Disable optimization for problematic domains in production
     unoptimized: false,
-    
-    // Custom loader for specific domains
     loader: 'default',
     path: '/_next/image',
   },
   
-  // Add video support in rewrites
   rewrites: () => {
     return [
       {
         source: "/hashtag/:tag",
         destination: "/search?q=%23:tag",
       },
-      // Video streaming support
       {
         source: "/video/:path*",
         destination: "/api/video/:path*",
       },
+      {
+        source: "/jitsi/:path*",
+        destination: "https://meet.jit.si/:path*",
+      },
     ];
   },
   
-  // Enhanced headers for media support
   headers: async () => {
     return [
       {
@@ -201,15 +216,22 @@ const nextConfig = {
           },
           {
             key: "X-Frame-Options",
-            value: "DENY",
+            value: "SAMEORIGIN",
           },
           {
             key: "Referrer-Policy",
             value: "strict-origin-when-cross-origin",
           },
+          {
+            key: "Permissions-Policy",
+            value: "camera=*, microphone=*, display-capture=*, fullscreen=*",
+          },
+          {
+            key: "Content-Security-Policy",
+            value: "frame-src 'self' https://meet.jit.si https://8x8.vc; frame-ancestors 'self';"
+          }
         ],
       },
-      // Video streaming headers
       {
         source: "/api/video/:path*",
         headers: [
@@ -223,11 +245,23 @@ const nextConfig = {
           },
         ],
       },
+      {
+        source: "/jitsi/:path*",
+        headers: [
+          {
+            key: "X-Frame-Options",
+            value: "ALLOWALL",
+          },
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors *",
+          },
+        ],
+      },
     ];
   },
   
   webpack: (config, { dev, isServer }) => {
-    // Enhanced webpack config for media handling
     config.module.rules.push({
       test: /\.(mp4|webm|ogg|swf|ogv)$/,
       use: {
@@ -235,6 +269,18 @@ const nextConfig = {
         options: {
           publicPath: '/_next/static/videos/',
           outputPath: 'static/videos/',
+        },
+      },
+    });
+    
+    config.module.rules.push({
+      test: /\.js$/,
+      include: /node_modules\/@jitsi/,
+      use: {
+        loader: 'babel-loader',
+        options: {
+          presets: ['@babel/preset-env'],
+          plugins: ['@babel/plugin-transform-runtime'],
         },
       },
     });
@@ -251,7 +297,6 @@ const nextConfig = {
           default: false,
           vendors: false,
           
-          // StreamChat optimization for your chat integration
           streamChat: {
             name: 'stream-chat',
             test: /[\\/]node_modules[\\/](stream-chat|stream-chat-react|@stream-io)[\\/]/,
@@ -259,7 +304,13 @@ const nextConfig = {
             priority: 30,
           },
           
-          // AI integration libraries for your Gemini integration
+          jitsiMeet: {
+            name: 'jitsi-meet',
+            test: /[\\/]node_modules[\\/](@jitsi)[\\/]/,
+            chunks: 'all',
+            priority: 25,
+          },
+          
           aiLibs: {
             name: 'ai-libs',
             test: /[\\/]node_modules[\\/](@google\/generative-ai|openai|@ai-sdk)[\\/]/,
@@ -267,7 +318,6 @@ const nextConfig = {
             priority: 25,
           },
           
-          // Media processing libraries
           mediaLibs: {
             name: 'media-libs',
             test: /[\\/]node_modules[\\/](sharp|canvas|ffmpeg|video\.js)[\\/]/,
@@ -308,12 +358,10 @@ const nextConfig = {
     },
   },
   
-  // Enhanced TypeScript config for media types
   typescript: {
     ignoreBuildErrors: false,
   },
   
-  // ESLint config
   eslint: {
     ignoreDuringBuilds: false,
   },
