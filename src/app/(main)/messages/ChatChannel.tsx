@@ -10,7 +10,6 @@ import {
   Window,
   useChatContext,
 } from "stream-chat-react";
-import { useVideoClient } from "@/hooks/useVideoClient";
 
 interface ChatChannelProps {
   open: boolean;
@@ -28,7 +27,6 @@ export default function ChatChannel({
   onToggleAI,
 }: ChatChannelProps) {
   const { channel } = useChatContext();
-  const { videoClient } = useVideoClient(currentUser);
 
   const getOtherMembers = () => {
     if (!channel?.state.members || !currentUser) return [];
@@ -61,7 +59,6 @@ export default function ChatChannel({
               size="icon"
               variant="ghost"
               onClick={onStartVideoCall}
-              disabled={!videoClient}
               className="text-green-600 hover:bg-green-50 rounded-full"
               title={`Video call ${otherMembers[0]?.user?.name || "user"}`}
             >

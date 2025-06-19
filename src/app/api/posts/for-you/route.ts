@@ -22,6 +22,14 @@ export async function GET(req: NextRequest) {
       cursor: cursor ? { id: cursor } : undefined,
     });
 
+    // Debug: Log posts and their attachments in detail
+    console.debug("[FOR-YOU API] Posts fetched (detailed attachments):", posts.map(p => ({
+      id: p.id,
+      content: p.content,
+      attachments: p.attachments.map(a => ({ id: a.id, type: a.type, url: a.url })),
+      createdAt: p.createdAt,
+    })));
+
     const nextCursor = posts.length > pageSize ? posts[pageSize].id : null;
 
     const data: PostsPage = {

@@ -30,6 +30,7 @@ async function WhoToFollow() {
 
   if (!user) return null;
 
+  // Get more users but only show 2 initially
   const usersToFollow = await prisma.user.findMany({
     where: {
       NOT: {
@@ -42,10 +43,14 @@ async function WhoToFollow() {
       },
     },
     select: getUserDataSelect(user.id),
-    take: 5,
+    take: 10, // Get more users to ensure we have enough for "Show more"
   });
 
   if (usersToFollow.length === 0) return null;
+
+  // Show only first 2 users
+  const displayedUsers = usersToFollow.slice(0, 2);
+  const remainingCount = usersToFollow.length - 2;
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow duration-200">
@@ -59,9 +64,9 @@ async function WhoToFollow() {
         </h2>
       </div>
 
-      {/* User List */}
+      {/* User List - Only show first 2 */}
       <div className="p-4 space-y-4">
-        {usersToFollow.map((user) => (
+        {displayedUsers.map((user) => (
           <div key={user.id} className="flex items-center justify-between gap-3 group">
             <UserTooltip user={user}>
               <Link
@@ -101,16 +106,23 @@ async function WhoToFollow() {
         ))}
       </div>
 
-      {/* Show More Link */}
-      <div className="border-t border-gray-100 dark:border-gray-800">
-        <Link 
-          href="/explore/people"
-          className="flex items-center justify-between p-4 text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors duration-200 rounded-b-2xl"
-        >
-          <span className="text-sm font-medium">Show more</span>
-          <ChevronRight className="h-4 w-4" />
-        </Link>
-      </div>
+      {/* Show More Link - Only show if there are more users */}
+      {remainingCount > 0 && (
+        <div className="border-t border-gray-100 dark:border-gray-800">
+          <Link 
+            href="/explore/people"
+            className="flex items-center justify-between p-4 text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors duration-200 rounded-b-2xl group"
+          >
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">Show more</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {remainingCount} more {remainingCount === 1 ? 'person' : 'people'} to follow
+              </span>
+            </div>
+            <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform duration-200" />
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
@@ -193,10 +205,10 @@ async function TrendingTopics() {
       <div className="border-t border-gray-100 dark:border-gray-800">
         <Link 
           href="/explore/trending"
-          className="flex items-center justify-between p-4 text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors duration-200 rounded-b-2xl"
+          className="flex items-center justify-between p-4 text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors duration-200 rounded-b-2xl group"
         >
           <span className="text-sm font-medium">Show more</span>
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform duration-200" />
         </Link>
       </div>
     </div>

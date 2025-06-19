@@ -14,7 +14,11 @@ export default function useInitializeChatClient() {
       return;
     }
 
-    const client = StreamChat.getInstance(process.env.NEXT_PUBLIC_STREAM_API_KEY!);
+    // Initialize with increased timeout and correct endpoint
+    const client = StreamChat.getInstance(process.env.NEXT_PUBLIC_STREAM_API_KEY!, {
+      timeout: 10000, // Increased from default 3000ms to 10000ms
+      baseURL: 'https://chat.stream-io-api.com',
+    });
 
     client
       .connectUser(

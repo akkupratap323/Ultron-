@@ -1,225 +1,415 @@
 "use client";
 
-import { Loader2, Bot, X, Sparkles, Video } from "lucide-react";
+import { Loader2, Bot, X, Menu, PhoneOff } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Chat as StreamChat } from "stream-chat-react";
 import ChatChannel from "./ChatChannel";
 import ChatSidebar from "./ChatSidebar";
+import AIAssistantPanel from "@/components/AIAssistantPanel"; // Import the separate component
 import useInitializeChatClient from "@/hooks/useInitializeChatClient";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { useVideoClient } from "@/hooks/useVideoClient";
-import { VideoCallUI } from "@/components/VideoCallUI";
-import IncomingCallModal from "@/components/IncomingCallModal";
+import { ZegoUIKitPrebuilt } from '@zegocloud/zego-uikit-prebuilt';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-// Stream Video SDK imports
-import {
-  StreamVideo,
-  StreamCall,
-  Call,
-} from '@stream-io/video-react-sdk';
-import '@stream-io/video-react-sdk/dist/css/styles.css';
-
-// AI Assistant Panel
-interface AIAssistantPanelProps {
-  onClose: () => void;
-  isTyping: boolean;
-  onTypingChange: (typing: boolean) => void;
-  isMobile: boolean;
+// ZEGOCLOUD Video Call Component with Enhanced Error Handling
+interface ZEGOCLOUDProps {
+  roomID: string;
+  userID: string;
+  userName: string;
+  onCallEnd?: () => void;
+  isInviteJoin?: boolean;
+  showInviteButton?: boolean;
 }
 
-const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
-  onClose,
-  isTyping,
-  onTypingChange,
-  isMobile
+// Enhanced URL parameter parsing with SSR safety
+function getUrlParams(url?: string) {
+  if (typeof window === 'undefined') {
+    return new URLSearchParams();
+  }
+  
+  try {
+    const targetUrl = url || window.location.href;
+    const urlObj = new URL(targetUrl);
+    return urlObj.searchParams;
+  } catch (error) {
+    const urlStr = (url || window.location.href).split('?')[1];
+    if (!urlStr) return new URLSearchParams();
+    return new URLSearchParams(urlStr);
+  }
+}
+
+// Generate random ID function for ZEGOCLOUD
+function randomID(len: number = 5): string {
+  let result = '';
+  const chars = '12345qwertyuiopasdfgh67890jklmnbvcxzMNBVCZXASDQWERTYHGFUIOLKJP';
+  const maxPos = chars.length;
+  
+  for (let i = 0; i < len; i++) {
+    result += chars.charAt(Math.floor(Math.random() * maxPos));
+  }
+  return result;
+}
+
+// Monkey patch for removeChild to prevent crashes - Fixed TypeScript declaration
+const patchRemoveChild = () => {
+  if (typeof window === 'undefined') return;
+  
+  // Type-safe monkey patch
+  const originalRemoveChild = Node.prototype.removeChild;
+  
+  // Override with proper typing
+  (Node.prototype as any).removeChild = function(child: Node): Node {
+    try {
+      // Check if the child is actually a child of this node
+      if (this.contains && this.contains(child)) {
+        return originalRemoveChild.call(this, child);
+      } else if (child.parentNode === this) {
+        return originalRemoveChild.call(this, child);
+      } else {
+        console.warn('Prevented removeChild error: node is not a child of this parent');
+        return child;
+      }
+    } catch (err) {
+      if (err instanceof Error && /not a child of this node/.test(err.message)) {
+        console.warn('Caught and ignored removeChild error:', err.message);
+        return child;
+      }
+      throw err;
+    }
+  };
+};
+
+const ZEGOCLOUD: React.FC<ZEGOCLOUDProps> = ({ 
+  roomID, 
+  userID, 
+  userName, 
+  onCallEnd,
+  isInviteJoin = false,
+  showInviteButton = true
 }) => {
-  const [messages, setMessages] = useState<Array<{id: string, text: string, isUser: boolean}>>([]);
-  const [inputValue, setInputValue] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const zegoInstanceRef = useRef<any>(null);
+  const isDestroyingRef = useRef(false);
+  const hasInitializedRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const [isClient, setIsClient] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [inviteLink, setInviteLink] = useState<string>("");
 
-  const handleSendMessage = useCallback(async () => {
-    if (!inputValue.trim()) return;
+  // Apply monkey patch on component mount
+  useEffect(() => {
+    patchRemoveChild();
+  }, []);
 
-    const userMessage = {
-      id: Date.now().toString(),
-      text: inputValue,
-      isUser: true
+  // Ensure component only initializes on client-side
+  useEffect(() => {
+    setIsClient(true);
+    isMountedRef.current = true;
+    
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Generate shareable link only on client side
+  useEffect(() => {
+    if (!isClient || !roomID) return;
+    
+    const finalRoomID = isInviteJoin ? roomID : `${roomID}_${Date.now()}`;
+    const shareableLink = `${window.location.origin}/messages?roomID=${finalRoomID}&action=join&userName=${encodeURIComponent(userName)}`;
+    setInviteLink(shareableLink);
+  }, [isClient, roomID, userName, isInviteJoin]);
+
+  // Enhanced safe destroy function with comprehensive DOM checks
+  const safeDestroy = useCallback(async () => {
+    if (isDestroyingRef.current || !zegoInstanceRef.current || !isMountedRef.current) {
+      return;
+    }
+    
+    try {
+      isDestroyingRef.current = true;
+      console.log('🧹 Destroying ZEGO instance...');
+      
+      const container = containerRef.current;
+      const zegoInstance = zegoInstanceRef.current;
+      
+      if (!container) {
+        console.warn('Container ref is null during cleanup');
+        zegoInstanceRef.current = null;
+        return;
+      }
+
+      if (!document.contains(container)) {
+        console.warn('Container is no longer in the DOM during cleanup');
+        zegoInstanceRef.current = null;
+        return;
+      }
+
+      if (!container.parentNode) {
+        console.warn('Container has no parent node during cleanup');
+        zegoInstanceRef.current = null;
+        return;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      if (!isMountedRef.current || !containerRef.current) {
+        console.warn('Component unmounted during cleanup delay');
+        zegoInstanceRef.current = null;
+        return;
+      }
+
+      await zegoInstance.destroy();
+      zegoInstanceRef.current = null;
+      console.log('✅ ZEGO instance destroyed successfully');
+      
+    } catch (error) {
+      console.warn('⚠️ Warning during ZEGO instance destruction:', error);
+      zegoInstanceRef.current = null;
+    } finally {
+      isDestroyingRef.current = false;
+    }
+  }, []);
+
+  // Enhanced safe cleanup function
+  const safeCleanup = useCallback(() => {
+    console.log('🧽 Starting safe cleanup...');
+    if (!isDestroyingRef.current && isMountedRef.current) {
+      safeDestroy();
+    }
+    setIsJoining(false);
+    setConnectionError(null);
+    hasInitializedRef.current = false;
+    console.log('✅ Safe cleanup completed');
+  }, [safeDestroy]);
+
+  useEffect(() => {
+    if (!isClient || isJoining || !roomID || !userID || hasInitializedRef.current || !isMountedRef.current) return;
+
+    const initializeCall = async () => {
+      if (!containerRef.current || isDestroyingRef.current || !isMountedRef.current) return;
+
+      try {
+        hasInitializedRef.current = true;
+        setIsJoining(true);
+        setConnectionError(null);
+
+        console.log('🚀 Initializing ZEGOCLOUD call...', {
+          roomID,
+          userID,
+          userName,
+          isInviteJoin,
+          timestamp: new Date().toISOString()
+        });
+
+        await safeDestroy();
+
+        if (!isMountedRef.current || !containerRef.current) {
+          console.warn('Component unmounted during initialization');
+          return;
+        }
+
+        const appID = parseInt(process.env.NEXT_PUBLIC_ZEGO_APP_ID!, 10);
+        const serverSecret = process.env.NEXT_PUBLIC_ZEGO_SERVER_SECRET!;
+        
+        if (!appID || !serverSecret) {
+          throw new Error('ZEGOCLOUD credentials not found');
+        }
+
+        const finalRoomID = isInviteJoin ? roomID : `${roomID}_${Date.now()}`;
+        const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
+          appID,
+          serverSecret,
+          finalRoomID,
+          userID,
+          userName || `User_${userID}`
+        );
+
+        if (!isMountedRef.current || !containerRef.current) {
+          console.warn('Component unmounted before ZEGO instance creation');
+          return;
+        }
+
+        const zp = ZegoUIKitPrebuilt.create(kitToken);
+        zegoInstanceRef.current = zp;
+
+        await zp.joinRoom({
+          container: containerRef.current,
+          sharedLinks: [
+            {
+              name: 'Invite Others to Join',
+              url: inviteLink,
+            },
+          ],
+          scenario: {
+            mode: ZegoUIKitPrebuilt.OneONoneCall,
+          },
+          showScreenSharingButton: true,
+          showTextChat: true,
+          showUserList: true,
+          maxUsers: 10,
+          layout: "Auto",
+          showLayoutButton: false,
+          onJoinRoom: () => {
+            if (!isMountedRef.current) return;
+            console.log('✅ Successfully joined ZEGO room:', finalRoomID);
+            setIsJoining(false);
+            setConnectionError(null);
+          },
+          onLeaveRoom: () => {
+            if (!isMountedRef.current) return;
+            console.log('📞 Left ZEGO room');
+            safeCleanup();
+            if (onCallEnd) onCallEnd();
+          },
+          onUserJoin: (users: any[]) => {
+            console.log('👥 Users joined:', users);
+          },
+          onUserLeave: (users: any[]) => {
+            console.log('👋 Users left:', users);
+          },
+        });
+
+      } catch (error: any) {
+        console.error('❌ Error initializing ZEGOCLOUD:', error);
+        setConnectionError(error.message || 'Failed to initialize video call');
+        setIsJoining(false);
+        hasInitializedRef.current = false;
+        if (onCallEnd) onCallEnd();
+      }
     };
 
-    setMessages(prev => [...prev, userMessage]);
-    setInputValue("");
-    onTypingChange(true);
+    initializeCall();
 
-    try {
-      setTimeout(() => {
-        const aiResponse = {
-          id: (Date.now() + 1).toString(),
-          text: `I understand you said: "${userMessage.text}". How can I help you further?`,
-          isUser: false
-        };
-        setMessages(prev => [...prev, aiResponse]);
-        onTypingChange(false);
-      }, 2000);
-    } catch (error) {
-      console.error("Error generating AI response:", error);
-      onTypingChange(false);
-    }
-  }, [inputValue, onTypingChange]);
+    return () => {
+      console.log('🔄 Component unmounting, cleaning up...');
+      isMountedRef.current = false;
+      safeCleanup();
+    };
+  }, [isClient, roomID, userID, userName, isInviteJoin, inviteLink, safeDestroy, safeCleanup, onCallEnd]);
 
-  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  }, [handleSendMessage]);
+  if (!isClient) {
+    return (
+      <div className="flex items-center justify-center h-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        <div className="text-white text-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto"></div>
+          <p className="text-lg font-medium">Initializing video call...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className={cn(
-      "h-full bg-background border-l border-border flex flex-col",
-      isMobile && "border-l-0"
-    )}>
-      <div className="p-4 border-b bg-gray-50 dark:bg-gray-800">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-full">
-              <Bot className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-gray-100">AI Assistant</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Always here to help</p>
-            </div>
-          </div>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={onClose}
-            className="hover:bg-red-50 dark:hover:bg-red-900/20"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-      
-      {/* Messages Area */}
-      <div className="flex-1 p-4 overflow-y-auto space-y-4">
-        {messages.length === 0 ? (
-          <div className="text-center text-muted-foreground py-8">
-            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Sparkles className="h-8 w-8 text-white" />
-            </div>
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">AI Assistant Ready</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Ask me anything about your conversations.</p>
-            <div className="mt-4 space-y-2">
-              <button
-                onClick={() => setInputValue("Summarize my recent conversations")}
-                className="block w-full text-left p-2 text-xs bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-              >
-                📝 Summarize conversations
-              </button>
-              <button
-                onClick={() => setInputValue("Help me write a professional message")}
-                className="block w-full text-left p-2 text-xs bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-              >
-                ✍️ Write professional message
-              </button>
-            </div>
-          </div>
-        ) : (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              className={cn(
-                "flex",
-                message.isUser ? "justify-end" : "justify-start"
-              )}
-            >
-              <div
-                className={cn(
-                  "max-w-[80%] rounded-lg px-3 py-2 text-sm shadow-sm",
-                  message.isUser
-                    ? "bg-blue-500 text-white"
-                    : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                )}
-              >
-                {message.text}
+    <div className="video-call-wrapper h-full">
+      <div
+        className="w-full h-full rounded-xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative shadow-2xl border border-slate-700"
+        ref={containerRef}
+        style={{ minHeight: '400px' }}
+      >
+        {isJoining && (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-white text-center space-y-6 p-8">
+              <div className="relative">
+                <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto"></div>
+                <div className="absolute inset-0 rounded-full bg-blue-500/20 animate-pulse"></div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xl font-semibold">Connecting to video call...</p>
+                <p className="text-sm text-slate-300">
+                  {isInviteJoin ? 'Joining via invite link...' : 'Starting new call...'}
+                </p>
               </div>
             </div>
-          ))
-        )}
-        
-        {isTyping && (
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <Bot className="h-4 w-4 text-blue-500" />
-              <Loader2 className="h-4 w-4 animate-spin" />
-            </div>
-            <span className="text-sm">AI is thinking...</span>
           </div>
         )}
-      </div>
-
-      {/* Input Area */}
-      <div className="p-4 border-t bg-gray-50 dark:bg-gray-800">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Ask AI anything..."
-            className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-            disabled={isTyping}
-          />
-          <Button
-            size="sm"
-            onClick={handleSendMessage}
-            disabled={!inputValue.trim() || isTyping}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4"
-          >
-            {isTyping ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send"}
-          </Button>
-        </div>
+        
+        {connectionError && (
+          <div className="flex items-center justify-center h-full p-8">
+            <div className="text-center max-w-md">
+              <div className="text-red-400 text-6xl mb-4">⚠️</div>
+              <h3 className="text-xl font-semibold text-white mb-2">Connection Failed</h3>
+              <p className="text-red-400 mb-6">{connectionError}</p>
+              <Button 
+                onClick={() => {
+                  setConnectionError(null);
+                  hasInitializedRef.current = false;
+                  window.location.reload();
+                }}
+                className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 hover:scale-105"
+              >
+                Retry Connection
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
+// Custom hook for debouncing to prevent rapid state changes
+const useDebounce = (value: any, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
+// Main Chat Component with Enhanced UI
 export default function Chat(): JSX.Element {
-  // ✅ ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL LOGIC
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const chatClient = useInitializeChatClient();
   const { resolvedTheme } = useTheme();
-  
-  // ✅ Fixed: Only destructure properties that exist in useVideoClient
-  const { videoClient, isLoading: videoClientLoading, isConnected, error } = useVideoClient(
-    chatClient?.user ? {
-      id: chatClient.user.id,
-      name: chatClient.user.name || chatClient.user.id,
-      image: typeof chatClient.user.image === 'string' ? chatClient.user.image : undefined,
-    } : undefined
-  );
 
-  // ✅ All other hooks in consistent order
+  // User definition
+  const user = chatClient?.user ? {
+    id: chatClient.user.id,
+    name: chatClient.user.name || chatClient.user.id,
+    image: typeof chatClient.user.image === 'string' ? chatClient.user.image : undefined,
+  } : undefined;
+
+  // State management
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [aiPanelOpen, setAIPanelOpen] = useState<boolean>(false);
   const [isAITyping, setIsAITyping] = useState<boolean>(false);
   const [isMobile, setIsMobile] = useState<boolean>(false);
   const [videoCallActive, setVideoCallActive] = useState<boolean>(false);
-  const [call, setCall] = useState<Call | null>(null);
-  const [incomingCall, setIncomingCall] = useState<Call | null>(null);
+  const [roomID, setRoomID] = useState<string>("");
+  const [isCallInitializing, setIsCallInitializing] = useState(false);
+  const [callCleanupTimeout, setCallCleanupTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [isInviteJoin, setIsInviteJoin] = useState(false);
+  const cleanupInProgressRef = useRef(false);
+  const hasProcessedInviteRef = useRef(false);
 
-  // Debounce utility function
-  const debounce = useCallback((func: Function, wait: number) => {
-    let timeout: NodeJS.Timeout;
-    return (...args: any[]) => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => func.apply(null, args), wait);
-    };
-  }, []);
+  // Memoized tooltip content to prevent re-renders
+  const aiTooltipContent = useMemo(() => 
+    aiPanelOpen ? "Close AI Assistant" : "Open AI Assistant", 
+    [aiPanelOpen]
+  );
 
-  // Mobile detection with better performance
+  // Tooltip provider props to prevent re-renders
+  const tooltipProviderProps = useMemo(() => ({
+    delayDuration: 300,
+    skipDelayDuration: 100
+  }), []);
+
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
     const checkMobile = (): void => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
@@ -227,192 +417,186 @@ export default function Chat(): JSX.Element {
         setSidebarOpen(false);
       }
     };
-    
     checkMobile();
-    const debouncedResize = debounce(checkMobile, 150);
-    window.addEventListener('resize', debouncedResize);
-    return () => window.removeEventListener('resize', debouncedResize);
-  }, [aiPanelOpen, debounce]);
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, [aiPanelOpen]);
 
-  // ✅ NOW SAFE TO DEFINE USER AFTER ALL HOOKS
-  const user = chatClient?.user ? {
-    id: chatClient.user.id,
-    name: chatClient.user.name || chatClient.user.id,
-    image: typeof chatClient.user.image === 'string' ? chatClient.user.image : undefined,
-  } : undefined;
+  // Enhanced invite link detection using Next.js hooks
+  useEffect(() => {
+    if (!chatClient?.user || hasProcessedInviteRef.current) return;
 
-  // Accept incoming call handler with better error handling
-  const handleAcceptCall = useCallback(async () => {
-    if (!incomingCall) return;
+    const inviteRoomID = searchParams.get('roomID');
+    const joinAction = searchParams.get('action');
+    const inviteUserName = searchParams.get('userName');
+
+    // Check for valid invite parameters
+    if (inviteRoomID && joinAction === 'join') {
+      console.log('✅ Valid invite link detected, processing...');
+      if (videoCallActive) {
+        console.log('🔄 Ending existing call to join invite...');
+        endVideoCall().then(() => {
+          setTimeout(() => {
+            joinViaInvite(inviteRoomID, inviteUserName);
+          }, 2000);
+        });
+      } else {
+        joinViaInvite(inviteRoomID, inviteUserName);
+      }
+      hasProcessedInviteRef.current = true;
+    }
+  }, [searchParams, chatClient?.user, videoCallActive]);
+
+  // Function to join via invite
+  const joinViaInvite = useCallback((roomID: string, userName?: string | null) => {
+    console.log('🎯 Joining via invite:', { roomID, userName });
+    setIsInviteJoin(true);
+    setRoomID(roomID);
+    setVideoCallActive(true);
+    if (userName && chatClient?.user) {
+      chatClient.user.name = decodeURIComponent(userName);
+    }
+    router.replace('/messages');
+    console.log('🎥 Video call activated from invite link');
+  }, [chatClient?.user, router]);
+
+  // Reset the invite processing flag when video call ends
+  const endVideoCall = useCallback(async () => {
+    if (cleanupInProgressRef.current) {
+      console.log('🚫 Cleanup already in progress, skipping');
+      return;
+    }
+
     try {
-      setCall(incomingCall);
-      setVideoCallActive(true);
-      await incomingCall.join();
-      console.log("✅ Successfully joined incoming call");
-    } catch (error) {
-      console.error("❌ Error joining incoming call:", error);
-      setCall(null);
+      cleanupInProgressRef.current = true;
+      hasProcessedInviteRef.current = false;
+      console.log("📞 Ending ZEGOCLOUD call...", { timestamp: new Date().toISOString() });
+      
       setVideoCallActive(false);
-    }
-  }, [incomingCall]);
-
-  // Reject incoming call handler with better error handling
-  const handleRejectCall = useCallback(async () => {
-    if (!incomingCall) return;
-    try {
-      await incomingCall.reject();
-      console.log("✅ Successfully rejected incoming call");
+      setIsCallInitializing(false);
+      setIsInviteJoin(false);
+      
+      const timeout = setTimeout(() => {
+        setRoomID("");
+        cleanupInProgressRef.current = false;
+        console.log("✅ Call cleanup completed");
+      }, 3000);
+      
+      setCallCleanupTimeout(timeout);
+      
     } catch (error) {
-      console.error("❌ Error rejecting call:", error);
-    } finally {
-      setCall(null);
-      setIncomingCall(null);
+      console.error("❌ Error ending call:", error);
+      cleanupInProgressRef.current = false;
+      hasProcessedInviteRef.current = false;
     }
-  }, [incomingCall]);
+  }, []);
 
-  // Start new video call with improved error handling
+  // Enhanced start video call function with proper guards and try-catch
   const startVideoCall = useCallback(async (targetUserId?: string | Event) => {
-    if (!videoClient || !user) {
-      console.warn("⚠️ Video client or user not available");
-      return;
-    }
-
-    const isEvent = targetUserId && typeof targetUserId === 'object' && 'target' in targetUserId;
-    if (isEvent) {
-      console.log("🔍 Event detected, ignoring for video call");
+    if (!user || isCallInitializing || videoCallActive || cleanupInProgressRef.current) {
+      console.log('🚫 Call already in progress, initializing, or cleaning up');
       return;
     }
 
     try {
-      const callId = `call-${user.id}-${Date.now()}`;
-      const newCall = videoClient.call('default', callId);
+      setIsCallInitializing(true);
+      console.log('🚀 Starting video call...');
       
-      await newCall.getOrCreate({
-        data: {
-          custom: {
-            title: `Video call with ${user.name}`,
-            description: "Video call session"
-          }
-        }
-      });
+      if (callCleanupTimeout) {
+        clearTimeout(callCleanupTimeout);
+        setCallCleanupTimeout(null);
+      }
       
-      setCall(newCall);
+      if (videoCallActive) {
+        console.log('🔄 Ending existing call before starting new one...');
+        await endVideoCall();
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+      
+      const callId = `call-${user.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      console.log('🆔 Generated call ID:', callId);
+      
+      setRoomID(callId);
+      setIsInviteJoin(false);
       setVideoCallActive(true);
-      await newCall.join();
-      console.log("✅ Video call started successfully");
+      
+      console.log("✅ ZEGOCLOUD video call initiated successfully");
     } catch (error) {
       console.error("❌ Error starting video call:", error);
-      setCall(null);
       setVideoCallActive(false);
-    }
-  }, [videoClient, user]);
-
-  // End video call handler with improved cleanup
-  const endVideoCall = useCallback(async () => {
-    if (!call) {
-      setVideoCallActive(false);
-      return;
-    }
-
-    try {
-      const callState = call.state?.callingState;
-      console.log("🔍 Call state before leaving:", callState);
-
-      if (callState === 'joined' || callState === 'joining') {
-        console.log("📞 Leaving call...");
-        await call.leave();
-      } else {
-        console.log("⚠️ Call already left or not joined, skipping leave");
-      }
-    } catch (error: any) {
-      if (error.message?.includes('already been left')) {
-        console.log("ℹ️ Call was already left");
-      } else {
-        console.error("❌ Error leaving call:", error);
-      }
+      setRoomID("");
     } finally {
-      setCall(null);
-      setVideoCallActive(false);
+      setIsCallInitializing(false);
     }
-  }, [call]);
+  }, [user, isCallInitializing, videoCallActive, callCleanupTimeout]);
 
-  // Toggle AI panel with better state management
   const toggleAIPanel = useCallback(() => {
-    setAIPanelOpen(prev => {
-      const newState = !prev;
-      if (isMobile && newState) {
-        setSidebarOpen(false);
-      }
-      return newState;
-    });
-  }, [isMobile]);
+    console.log('🤖 Toggling AI panel...', { currentState: aiPanelOpen });
+    setAIPanelOpen(!aiPanelOpen);
+    if (isMobile && !aiPanelOpen) {
+      setSidebarOpen(false);
+    }
+  }, [aiPanelOpen, isMobile]);
 
-  // ✅ CONDITIONAL RETURN AFTER ALL HOOKS
   if (!chatClient) {
     return (
-      <div className="flex flex-col items-center justify-center h-full py-16 bg-gray-50 dark:bg-gray-900">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 shadow-lg max-w-md w-full mx-4">
-          <div className="text-center">
-            <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
-              Initializing Chat
-            </h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Setting up your messaging experience...
-            </p>
-            {videoClientLoading && (
-              <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                <Video className="h-4 w-4" />
-                <span>Preparing video calls...</span>
-              </div>
-            )}
+      <div className="flex flex-col items-center justify-center h-full py-16 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+        <div className="text-center space-y-6">
+          <div className="relative">
+            <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto" />
+            <div className="absolute inset-0 bg-blue-600/20 rounded-full animate-pulse"></div>
+          </div>
+          <div className="space-y-2">
+            <span className="text-xl font-semibold text-slate-900 dark:text-white">Initializing chat...</span>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Setting up your secure connection</p>
           </div>
         </div>
       </div>
     );
   }
 
-  // Main chat UI with improved structure
   return (
-    <TooltipProvider>
-      <main className="relative w-full overflow-hidden rounded-2xl bg-white dark:bg-gray-900 shadow-xl border border-gray-200 dark:border-gray-800">
-        {/* Mobile header with better styling */}
+    <TooltipProvider {...tooltipProviderProps}>
+      <main className="relative w-full overflow-hidden rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-700">
+        {/* Enhanced Mobile header */}
         {isMobile && (
-          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 backdrop-blur-sm z-50">
+          <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-white to-slate-50 dark:from-slate-900 dark:to-slate-800 backdrop-blur-sm z-50">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setSidebarOpen(!sidebarOpen)}
               disabled={aiPanelOpen}
-              className="text-gray-700 dark:text-gray-300"
+              className="flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-800"
             >
+              <Menu className="h-4 w-4" />
               <span className="text-sm font-medium">Chats</span>
             </Button>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+            <h1 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
               {aiPanelOpen ? "AI Assistant" : "Messages"}
             </h1>
-            <div className="flex gap-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={toggleAIPanel}
-                    className={cn(
-                      "transition-colors",
-                      aiPanelOpen 
-                        ? "text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" 
-                        : "text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                    )}
-                  >
-                    {aiPanelOpen ? <X className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {aiPanelOpen ? "Close AI Assistant" : "Open AI Assistant"}
-                </TooltipContent>
-              </Tooltip>
-            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleAIPanel}
+                  className={cn(
+                    "relative transition-all duration-200 hover:scale-105",
+                    aiPanelOpen 
+                      ? "bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/30" 
+                      : "bg-gradient-to-r from-emerald-50 to-green-50 hover:from-emerald-100 hover:to-green-100 text-emerald-600 dark:from-emerald-900/20 dark:to-green-900/20 dark:hover:from-emerald-900/30 dark:hover:to-green-900/30"
+                  )}
+                >
+                  {aiPanelOpen ? <X className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
+                  {!aiPanelOpen && (
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {aiTooltipContent}
+              </TooltipContent>
+            </Tooltip>
           </div>
         )}
 
@@ -442,9 +626,9 @@ export default function Chat(): JSX.Element {
             />
           </StreamChat>
 
-          {/* AI Panel - Desktop with better styling */}
+          {/* AI Panel - Desktop */}
           {aiPanelOpen && !isMobile && (
-            <div className="w-80 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700">
+            <div className="w-96 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-700">
               <AIAssistantPanel 
                 onClose={() => setAIPanelOpen(false)}
                 isTyping={isAITyping}
@@ -455,9 +639,9 @@ export default function Chat(): JSX.Element {
           )}
         </div>
 
-        {/* AI Panel - Mobile Overlay with better animation */}
+        {/* AI Panel - Mobile Overlay */}
         {aiPanelOpen && isMobile && (
-          <div className="absolute inset-0 bg-white dark:bg-gray-900 z-40 animate-in slide-in-from-right duration-300">
+          <div className="absolute inset-0 bg-white dark:bg-slate-900 z-40">
             <AIAssistantPanel 
               onClose={() => setAIPanelOpen(false)}
               isTyping={isAITyping}
@@ -467,46 +651,66 @@ export default function Chat(): JSX.Element {
           </div>
         )}
 
-        {/* Incoming call modal with better positioning */}
-        {incomingCall && !videoCallActive && (
-          <div className="absolute inset-0 z-50">
-            <IncomingCallModal
-              call={incomingCall}
-              onAccept={handleAcceptCall}
-              onReject={handleRejectCall}
-            />
+        {/* Enhanced ZEGOCLOUD Video Call UI */}
+        {videoCallActive && user && roomID && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="relative w-full h-full max-w-7xl max-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-700">
+              {/* Enhanced Close Button */}
+              <Button
+                size="icon"
+                onClick={endVideoCall}
+                className="absolute top-6 right-6 z-10 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-full shadow-lg border border-red-500 transition-all duration-200 hover:scale-110 w-12 h-12"
+                title="End Call"
+              >
+                <PhoneOff className="h-5 w-5" />
+              </Button>
+              
+              {/* Call Status Indicator */}
+              <div className="absolute top-6 left-6 z-10 bg-green-500/90 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2">
+                <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                Live Call
+              </div>
+              
+              {/* ZEGOCLOUD Component */}
+              <ZEGOCLOUD 
+                roomID={roomID}
+                userID={user.id}
+                userName={user.name}
+                onCallEnd={endVideoCall}
+                isInviteJoin={isInviteJoin}
+                showInviteButton={true}
+              />
+            </div>
           </div>
         )}
 
-        {/* Video call UI with better fullscreen handling */}
-        {videoCallActive && videoClient && call && (
-          <div className="absolute inset-0 z-50 bg-black">
-            <StreamVideo client={videoClient}>
-              <StreamCall call={call}>
-                <VideoCallUI onLeave={endVideoCall} />
-              </StreamCall>
-            </StreamVideo>
-          </div>
-        )}
+        {/* REMOVED: Green AI Assistant Button - No longer present */}
 
-        {/* Desktop AI Toggle Button with enhanced styling */}
-        {!isMobile && !aiPanelOpen && (
-          <div className="absolute bottom-6 right-6 z-30">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="lg"
-                  className="rounded-full shadow-lg bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0 h-12 px-6"
-                  onClick={toggleAIPanel}
-                >
-                  <Bot className="h-5 w-5 mr-2" />
-                  <span className="font-medium">AI Assistant</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                Open AI Assistant
-              </TooltipContent>
-            </Tooltip>
+        {/* Enhanced Development Debug Info */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="fixed bottom-4 left-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white p-3 rounded-lg text-xs max-w-sm z-40 opacity-90 border border-slate-700 shadow-xl">
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Room:</span>
+                <span className="text-green-400">{roomID || 'None'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Call:</span>
+                <span className={videoCallActive ? "text-green-400" : "text-red-400"}>
+                  {videoCallActive ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Invite:</span>
+                <span className={isInviteJoin ? "text-blue-400" : "text-slate-500"}>
+                  {isInviteJoin ? 'Yes' : 'No'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">User:</span>
+                <span className="text-yellow-400">{user?.name || 'None'}</span>
+              </div>
+            </div>
           </div>
         )}
       </main>

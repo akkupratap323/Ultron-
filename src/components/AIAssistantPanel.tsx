@@ -1,20 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Loader2, Bot, X, Sparkles, Send, Zap, Globe, Edit3, FileText, Copy, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Bot, X, Sparkles, User, Send, Loader2 } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-
-// TypeScript interfaces
-interface Message {
-  id: number;
-  type: 'user' | 'ai';
-  content: string;
-  timestamp: Date;
-  isStreaming?: boolean;
-}
 
 interface AIAssistantPanelProps {
   onClose: () => void;
@@ -23,340 +12,331 @@ interface AIAssistantPanelProps {
   isMobile: boolean;
 }
 
-export function AIAssistantPanel({ onClose, isTyping, onTypingChange, isMobile }: AIAssistantPanelProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 1,
-      type: 'ai',
-      content: '👋 Hey there! I\'m your AI companion powered by Gemini. Ready to help you create amazing content, translate languages, or chat about anything!',
-      timestamp: new Date()
-    }
-  ]);
-  const [input, setInput] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+interface Message {
+  id: string;
+  text: string;
+  isUser: boolean;
+  timestamp: Date;
+}
 
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
-    }
-  }, [messages, isLoading]);
+const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
+  onClose,
+  isTyping,
+  onTypingChange,
+  isMobile
+}) => {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputValue, setInputValue] = useState("");
 
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
-    }
-  }, [input]);
-
-  const sendMessage = async (): Promise<void> => {
-    if (!input.trim() || isLoading) return;
-
-    const userMessage: Message = {
-      id: Date.now(),
-      type: 'user',
-      content: input,
-      timestamp: new Date()
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    const currentInput = input;
-    setInput('');
-    setIsLoading(true);
-    setError(null);
-    onTypingChange(true);
-
+  // Enhanced AI response function with Gemini integration
+  const generateAIResponse = async (userMessage: string): Promise<string> => {
     try {
-      const recentHistory = messages.slice(-10);
-      
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: currentInput,
-          context: 'chat_assistant',
-          history: recentHistory
+          message: userMessage,
+          context: 'ultron_video_calling_app'
         }),
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API returned ${response.status}: ${errorText}`);
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
+      return data.response || "I'm having trouble processing your request. Please try again.";
 
-      if (!data.response) {
-        throw new Error('No response from AI');
-      }
-
-      const aiMessage: Message = {
-        id: Date.now() + 1,
-        type: 'ai',
-        content: data.response,
-        timestamp: new Date()
-      };
-
-      setMessages(prev => [...prev, aiMessage]);
     } catch (error) {
-      console.error('AI Error:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error occurred';
-      setError(errorMsg);
+      console.error('AI response error:', error);
+      return getIntelligentFallbackResponse(userMessage);
+    }
+  };
+
+  // Enhanced fallback responses specific to your app
+  const getIntelligentFallbackResponse = (message: string): string => {
+    const lowerMessage = message.toLowerCase();
+    
+    // Video call specific responses
+    if (lowerMessage.includes('video call') || lowerMessage.includes('call')) {
+      if (lowerMessage.includes('start') || lowerMessage.includes('begin')) {
+        return `🎥 **Starting a Video Call:**
+
+1. Open a chat conversation
+2. Click the video call button (📹) in the chat header
+3. Wait for ZEGOCLOUD to initialize
+4. Share the auto-generated invite link with participants
+
+*Note: Make sure your camera and microphone permissions are enabled!*`;
+      }
+      if (lowerMessage.includes('invite') || lowerMessage.includes('share')) {
+        return `🔗 **Sharing Invite Links:**
+
+1. During an active call, click 'Invite Others' button
+2. The invite link is automatically copied to clipboard
+3. Share the link via any messaging platform
+4. Participants can join by pasting the link in a new browser tab
+
+*Tip: The invite link includes room ID, action=join, and username parameters.*`;
+      }
+      if (lowerMessage.includes('error') || lowerMessage.includes('problem')) {
+        return `🔧 **Video Call Troubleshooting:**
+
+**Common Issues & Solutions:**
+• **Timeout errors**: Refresh page and try again
+• **removeChild DOM error**: This is automatically handled by our error prevention system
+• **Can't join invite**: Check if the link includes roomID and action=join parameters
+• **Camera/mic not working**: Check browser permissions in settings
+
+*If problems persist, try using a different browser or clearing cache.*`;
+      }
+      return `🎥 I can help you with video calls! I assist with starting calls, sharing invite links, troubleshooting issues, and understanding ZEGOCLOUD features. What specific video call feature do you need help with?`;
+    }
+
+    // Chat and messaging
+    if (lowerMessage.includes('chat') || lowerMessage.includes('message')) {
+      return `💬 **Chat Features Help:**
+
+• **View chat history**: Scroll up in any conversation
+• **Manage conversations**: Use the sidebar to switch between chats
+• **Stream Chat integration**: All messages are synced in real-time
+• **Notifications**: Configure in your profile settings
+
+*This app uses Stream Chat for reliable messaging with real-time synchronization.*`;
+    }
+
+    // AI Assistant specific
+    if (lowerMessage.includes('ai') || lowerMessage.includes('assistant')) {
+      return `🤖 **AI Assistant Features:**
+
+• **Video call guidance**: Step-by-step help for calls
+• **Troubleshooting**: Solve technical issues
+• **Feature explanations**: Learn about app capabilities
+• **Quick suggestions**: Tap the suggested questions below
+
+*I'm powered by Google Gemini AI and specifically trained for this Ultron video calling app!*`;
+    }
+
+    // App navigation and settings
+    if (lowerMessage.includes('setting') || lowerMessage.includes('theme') || lowerMessage.includes('dark')) {
+      return `⚙️ **App Settings & Themes:**
+
+• **Theme switching**: Toggle between light/dark mode in your profile
+• **Notifications**: Manage chat and call notifications
+• **Profile settings**: Update your name and avatar
+• **Privacy controls**: Manage who can call you
+
+*The app automatically saves your preferences across sessions.*`;
+    }
+
+    // Greetings
+    if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
+      return `👋 **Hello! Welcome to Ultron AI Assistant!**
+
+I'm here to help you with:
+🎥 **Video Calls** - Starting, joining, and troubleshooting
+💬 **Messaging** - Chat features and history
+🔧 **Technical Support** - Solving app issues
+⚙️ **Settings** - Customizing your experience
+
+What would you like help with today?`;
+    }
+
+    // Default intelligent response
+    return `🤔 I understand you're asking about "${message}". 
+
+**I can help you with:**
+• 🎥 **Video Calls**: ZEGOCLOUD integration, invite links, troubleshooting
+• 💬 **Messaging**: Stream Chat features, conversation management  
+• 🔧 **Technical Issues**: Connection problems, DOM errors, browser compatibility
+• ⚙️ **App Features**: Navigation, settings, themes
+
+*Could you be more specific about what aspect you'd like help with?*`;
+  };
+
+  const handleSendMessage = async () => {
+    if (!inputValue.trim() || isTyping) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      text: inputValue.trim(),
+      isUser: true,
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    const currentInput = inputValue.trim();
+    setInputValue("");
+    onTypingChange(true);
+
+    try {
+      const aiResponseText = await generateAIResponse(currentInput);
       
-      const errorMessage: Message = {
-        id: Date.now() + 1,
-        type: 'ai',
-        content: `Oops! Something went wrong: ${errorMsg}. Let's try that again! 🔄`,
+      const aiResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        text: aiResponseText,
+        isUser: false,
         timestamp: new Date()
       };
-      setMessages(prev => [...prev, errorMessage]);
+
+      setMessages(prev => [...prev, aiResponse]);
+    } catch (error) {
+      console.error('Error getting AI response:', error);
+      
+      const errorResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        text: "🚨 I'm experiencing technical difficulties. Please try asking about video calls, messaging features, or app settings.",
+        isUser: false,
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, errorResponse]);
     } finally {
-      setIsLoading(false);
       onTypingChange(false);
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
-
-  // Enhanced quick actions with better UX
-  const quickActions = [
-    { id: 'help', icon: Edit3, label: 'Write', prompt: 'Help me write a professional message about', color: 'bg-blue-500/10 text-blue-600 border-blue-200' },
-    { id: 'translate', icon: Globe, label: 'Translate', prompt: 'Translate this text to Spanish: ', color: 'bg-green-500/10 text-green-600 border-green-200' },
-    { id: 'improve', icon: Sparkles, label: 'Enhance', prompt: 'Make this message better and more engaging: ', color: 'bg-purple-500/10 text-purple-600 border-purple-200' },
-    { id: 'summarize', icon: FileText, label: 'Summarize', prompt: 'Summarize our conversation so far', color: 'bg-orange-500/10 text-orange-600 border-orange-200' },
+  const quickSuggestions = [
+    "How do I start a video call?",
+    "How to share invite links?",
+    "Fix video call errors",
+    "Show me chat features",
+    "Change app theme"
   ];
 
-  const handleQuickAction = (prompt: string): void => {
-    setInput(prompt);
-    textareaRef.current?.focus();
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    // You could add a toast notification here
-  };
-
   return (
-    <div className="flex flex-col h-full bg-gradient-to-b from-background to-background/95">
-      {/* Modern Header with Glassmorphism */}
-      <div className={cn(
-        "flex items-center justify-between border-b border-border/50 bg-background/80 backdrop-blur-xl",
-        "shadow-sm",
-        isMobile ? "p-4" : "p-4"
-      )}>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-              <Bot className="h-5 w-5 text-white" />
+    <div className={cn(
+      "h-full bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-800 border-l border-slate-200 dark:border-slate-700 flex flex-col shadow-xl",
+      isMobile && "border-l-0"
+    )}>
+      {/* Header */}
+      <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-900/20 dark:to-green-900/20">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Bot className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
             </div>
-            <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-background flex items-center justify-center">
-              <Sparkles className="h-2 w-2 text-white" />
+            <div>
+              <h2 className="font-semibold text-slate-900 dark:text-white">Ultron AI Assistant</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Powered by Google Gemini</p>
             </div>
           </div>
-          <div>
-            <h3 className="font-semibold text-base">Gemini AI</h3>
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              {isTyping ? 'Thinking...' : 'Online'}
-            </p>
-          </div>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
         </div>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={onClose}
-          className="hover:bg-red-500/10 hover:text-red-600 transition-colors"
-        >
-          <X className="h-4 w-4" />
-        </Button>
       </div>
-
-      {/* Error Display with Better Styling */}
-      {error && (
-        <div className="mx-4 mt-3 p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
-          <p className="text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
-            <span className="text-red-500">⚠️</span>
-            {error}
-          </p>
-        </div>
-      )}
-
-      {/* Messages with Enhanced Styling */}
-      <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
-        <div className="space-y-4">
-          {messages.map((message, index) => (
+      
+      {/* Messages Area */}
+      <div className="flex-1 p-4 overflow-y-auto space-y-4">
+        {messages.length === 0 ? (
+          <div className="text-center text-slate-500 dark:text-slate-400 space-y-4 py-12">
+            <div className="relative mx-auto w-16 h-16">
+              <Sparkles className="h-16 w-16 text-emerald-500 animate-pulse" />
+              <div className="absolute inset-0 bg-emerald-500/20 rounded-full animate-ping"></div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-lg font-medium text-slate-700 dark:text-slate-300">Ultron AI Ready!</p>
+              <p className="text-sm">Ask me about video calls, messaging, or any app features. I&apos;m here to help!</p>
+            </div>
+            <div className="flex flex-wrap gap-2 justify-center mt-6">
+              {quickSuggestions.map((suggestion, index) => (
+                <Button
+                  key={index}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setInputValue(suggestion)}
+                  className="text-xs hover:bg-emerald-50 hover:border-emerald-200 dark:hover:bg-emerald-900/20"
+                >
+                  {suggestion}
+                </Button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          messages.map((message) => (
             <div
               key={message.id}
               className={cn(
-                "flex gap-3 group",
-                message.type === 'user' ? 'justify-end' : 'justify-start'
+                "flex",
+                message.isUser ? "justify-end" : "justify-start"
               )}
             >
-              {message.type === 'ai' && (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0 mt-1">
-                  <Bot className="h-4 w-4 text-white" />
-                </div>
-              )}
-              
-              <div className={cn(
-                "relative max-w-[85%] rounded-2xl px-4 py-3 shadow-sm transition-all duration-200",
-                message.type === 'user'
-                  ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white ml-auto'
-                  : 'bg-white dark:bg-gray-800 border border-border/50 hover:shadow-md'
-              )}>
-                {message.type === 'ai' && (
-                  <div className="flex items-center gap-1 mb-2 opacity-70">
-                    <Sparkles className="h-3 w-3" />
-                    <span className="text-xs font-medium">Gemini</span>
+              <div className="flex items-start gap-2 max-w-[85%]">
+                {!message.isUser && (
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center flex-shrink-0 mt-1">
+                    <Bot className="h-4 w-4 text-white" />
                   </div>
                 )}
-                
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                  {message.content}
-                </p>
-                
-                <div className="flex items-center justify-between mt-2">
-                  <span className="text-xs opacity-60">
-                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                  
-                  {message.type === 'ai' && (
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyToClipboard(message.content)}
-                        className="h-6 w-6 p-0 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0 hover:bg-green-100 dark:hover:bg-green-900"
-                      >
-                        <ThumbsUp className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0 hover:bg-red-100 dark:hover:bg-red-900"
-                      >
-                        <ThumbsDown className="h-3 w-3" />
-                      </Button>
-                    </div>
+                <div
+                  className={cn(
+                    "rounded-2xl px-4 py-3 text-sm shadow-sm",
+                    message.isUser
+                      ? "bg-gradient-to-br from-blue-600 to-blue-700 text-white"
+                      : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
                   )}
+                >
+                  <p className="whitespace-pre-line">{message.text}</p>
+                  <p className={cn(
+                    "text-xs mt-1 opacity-70",
+                    message.isUser ? "text-blue-100" : "text-slate-500 dark:text-slate-400"
+                  )}>
+                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
-              </div>
-              
-              {message.type === 'user' && (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0 mt-1">
-                  <span className="text-white text-sm font-medium">U</span>
-                </div>
-              )}
-            </div>
-          ))}
-          
-          {/* Enhanced Loading Animation */}
-          {isLoading && (
-            <div className="flex gap-3">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
-                <Bot className="h-4 w-4 text-white" />
-              </div>
-              <div className="bg-white dark:bg-gray-800 border border-border/50 rounded-2xl px-4 py-3 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                    <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                {message.isUser && (
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0 mt-1">
+                    <User className="h-4 w-4 text-white" />
                   </div>
-                  <span className="text-xs text-muted-foreground">Gemini is crafting a response...</span>
-                </div>
+                )}
               </div>
             </div>
-          )}
-        </div>
-      </ScrollArea>
-
-      {/* Enhanced Input Section */}
-      <div className="border-t border-border/50 bg-background/80 backdrop-blur-xl p-4">
-        {/* Quick Actions with Better Design */}
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
-          {quickActions.map((action) => (
-            <Button
-              key={action.id}
-              variant="outline"
-              size="sm"
-              onClick={() => handleQuickAction(action.prompt)}
-              className={cn(
-                "flex-shrink-0 h-8 text-xs font-medium transition-all duration-200 hover:scale-105",
-                action.color
-              )}
-            >
-              <action.icon className="h-3 w-3 mr-1" />
-              {action.label}
-            </Button>
-          ))}
-        </div>
-
-        {/* Input Area with Modern Design */}
-        <div className="flex gap-3 items-end">
-          <div className="flex-1 relative">
-            <Textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Ask Gemini anything... ✨"
-              className={cn(
-                "resize-none border-border/50 focus:border-purple-500 transition-all duration-200",
-                "bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm",
-                "rounded-2xl px-4 py-3 pr-12",
-                isMobile 
-                  ? "min-h-[48px] max-h-[120px] text-base"
-                  : "min-h-[44px] max-h-[100px] text-sm"
-              )}
-              disabled={isLoading}
-              rows={1}
-            />
-            <div className="absolute right-3 bottom-3 text-xs text-muted-foreground">
-              {input.length}/2000
+          ))
+        )}
+        
+        {isTyping && (
+          <div className="flex items-start gap-2">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center flex-shrink-0">
+              <Bot className="h-4 w-4 text-white" />
+            </div>
+            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-3 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
+                <span className="text-xs text-slate-500 dark:text-slate-400">Gemini AI is thinking...</span>
+              </div>
             </div>
           </div>
-          
+        )}
+      </div>
+
+      {/* Input Area */}
+      <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <div className="flex gap-3">
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+              placeholder="Ask about video calls, messaging, or app features..."
+              className="w-full px-4 py-3 text-sm border border-slate-200 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
+              disabled={isTyping}
+            />
+          </div>
           <Button
-            onClick={sendMessage}
-            disabled={!input.trim() || isLoading}
-            size={isMobile ? "default" : "sm"}
-            className={cn(
-              "rounded-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600",
-              "shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105",
-              isMobile ? "h-12 w-12" : "h-11 w-11"
-            )}
+            onClick={handleSendMessage}
+            disabled={!inputValue.trim() || isTyping}
+            className="bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 hover:scale-105 disabled:opacity-50"
           >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
+            {isTyping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </div>
-        
-        <p className="text-xs text-muted-foreground mt-2 text-center">
-          Press Enter to send • Shift+Enter for new line
-        </p>
       </div>
     </div>
   );
-}
+};
+
+export default AIAssistantPanel;
