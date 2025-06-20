@@ -99,6 +99,17 @@ const ZEGOCLOUD: React.FC<ZEGOCLOUDProps> = ({
   const [isJoining, setIsJoining] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [inviteLink, setInviteLink] = useState<string>("");
+  const finalRoomIDRef = useRef<string>("");
+
+  // Generate and store a consistent finalRoomID for both invite link and call
+  useEffect(() => {
+    if (!isClient || !roomID) return;
+    if (!finalRoomIDRef.current) {
+      finalRoomIDRef.current = isInviteJoin ? roomID : `${roomID}_${Date.now()}`;
+    }
+    const shareableLink = `${window.location.origin}/messages?roomID=${finalRoomIDRef.current}&action=join&userName=${encodeURIComponent(userName)}`;
+    setInviteLink(shareableLink);
+  }, [isClient, roomID, userName, isInviteJoin]);
 
   // Apply monkey patch on component mount
   useEffect(() => {
@@ -114,15 +125,6 @@ const ZEGOCLOUD: React.FC<ZEGOCLOUDProps> = ({
       isMountedRef.current = false;
     };
   }, []);
-
-  // Generate shareable link only on client side
-  useEffect(() => {
-    if (!isClient || !roomID) return;
-    
-    const finalRoomID = isInviteJoin ? roomID : `${roomID}_${Date.now()}`;
-    const shareableLink = `${window.location.origin}/messages?roomID=${finalRoomID}&action=join&userName=${encodeURIComponent(userName)}`;
-    setInviteLink(shareableLink);
-  }, [isClient, roomID, userName, isInviteJoin]);
 
   // Enhanced safe destroy function with comprehensive DOM checks
   const safeDestroy = useCallback(async () => {
@@ -188,7 +190,8 @@ const ZEGOCLOUD: React.FC<ZEGOCLOUDProps> = ({
   }, [safeDestroy]);
 
   useEffect(() => {
-    if (!isClient || isJoining || !roomID || !userID || hasInitializedRef.current || !isMountedRef.current) return;
+    // Don't initialize until we have both roomID and inviteLink ready
+    if (!isClient || isJoining || !roomID || !userID || hasInitializedRef.current || !isMountedRef.current || !inviteLink) return;
 
     const initializeCall = async () => {
       if (!containerRef.current || isDestroyingRef.current || !isMountedRef.current) return;
@@ -215,18 +218,24 @@ const ZEGOCLOUD: React.FC<ZEGOCLOUDProps> = ({
 
         const appID = parseInt(process.env.NEXT_PUBLIC_ZEGO_APP_ID!, 10);
         const serverSecret = process.env.NEXT_PUBLIC_ZEGO_SERVER_SECRET!;
-        
+
         if (!appID || !serverSecret) {
+          console.error('❌ ZEGOCLOUD credentials missing in production', {
+            appID,
+            serverSecretExists: !!serverSecret,
+            env: process.env.NODE_ENV
+          });
           throw new Error('ZEGOCLOUD credentials not found');
         }
 
-        const finalRoomID = isInviteJoin ? roomID : `${roomID}_${Date.now()}`;
+        // Use finalRoomIDRef.current for both invite link and ZEGOCLOUD call
+        const finalRoomID = finalRoomIDRef.current;
         const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
           appID,
           serverSecret,
           finalRoomID,
           userID,
-          userName || `User_${userID}`
+          userName ? userName : `User_${userID}`
         );
 
         if (!isMountedRef.current || !containerRef.current) {
@@ -237,11 +246,13 @@ const ZEGOCLOUD: React.FC<ZEGOCLOUDProps> = ({
         const zp = ZegoUIKitPrebuilt.create(kitToken);
         zegoInstanceRef.current = zp;
 
+        console.log('🔗 Using invite link for ZEGOCLOUD:', inviteLink);
+
         await zp.joinRoom({
           container: containerRef.current,
           sharedLinks: [
             {
-              name: 'Invite Others to Join',
+              name: 'Copy Invite Link',
               url: inviteLink,
             },
           ],
@@ -292,6 +303,57 @@ const ZEGOCLOUD: React.FC<ZEGOCLOUDProps> = ({
     };
   }, [isClient, roomID, userID, userName, isInviteJoin, inviteLink, safeDestroy, safeCleanup, onCallEnd]);
 
+  // Move copyInviteLink and fallbackCopyToClipboard below all hooks and before the return statement
+  const copyInviteLink = useCallback(async () => {
+    if (!inviteLink) {
+      console.warn('❌ No invite link available to copy');
+      alert('Invite link not ready. Please wait a moment and try again.');
+      return;
+    }
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(inviteLink);
+        console.log('✅ Invite link copied via Clipboard API');
+        alert('Invite link copied to clipboard!');
+        return;
+      } else {
+        const success = fallbackCopyToClipboard(inviteLink);
+        if (success) {
+          alert('Invite link copied to clipboard!');
+        } else {
+          prompt('Copy this invite link manually:', inviteLink);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Clipboard copy failed:', error);
+      prompt('Copy this invite link manually:', inviteLink);
+    }
+  }, [inviteLink]);
+
+  function fallbackCopyToClipboard(text: string) {
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      if (successful) {
+        console.log('✅ Link copied via fallback method');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('❌ Fallback copy error:', error);
+      return false;
+    }
+  };
+
   if (!isClient) {
     return (
       <div className="flex items-center justify-center h-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -305,6 +367,16 @@ const ZEGOCLOUD: React.FC<ZEGOCLOUDProps> = ({
 
   return (
     <div className="video-call-wrapper h-full">
+      {/* Add manual copy button */}
+      {inviteLink && (
+        <button
+          onClick={copyInviteLink}
+          className="absolute top-4 left-4 z-10 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:scale-105"
+          title="Copy Invite Link"
+        >
+          📋 Copy Invite Link
+        </button>
+      )}
       <div
         className="w-full h-full rounded-xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative shadow-2xl border border-slate-700"
         ref={containerRef}
@@ -430,7 +502,14 @@ export default function Chat(): JSX.Element {
     const joinAction = searchParams.get('action');
     const inviteUserName = searchParams.get('userName');
 
-    // Check for valid invite parameters
+    console.log('🔍 Checking invite parameters:', {
+      inviteRoomID,
+      joinAction,
+      inviteUserName,
+      hasProcessed: hasProcessedInviteRef.current,
+      currentVideoCallActive: videoCallActive
+    });
+
     if (inviteRoomID && joinAction === 'join') {
       console.log('✅ Valid invite link detected, processing...');
       if (videoCallActive) {
