@@ -30,39 +30,28 @@ export default async function MenuBar({ className }: MenuBarProps) {
     <div className={className}>
       <Button
         variant="ghost"
-        className="flex items-center justify-start gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200 hover:shadow-md"
+        className="flex items-center justify-start gap-3"
         title="Home"
         asChild
       >
         <Link href="/">
-          <Home className="w-5 h-5" />
-          <span className="hidden lg:inline font-medium">Home</span>
+          <Home />
+          <span className="hidden lg:inline">Home</span>
         </Link>
       </Button>
-      
-      {/* Wrap NotificationsButton in a div to apply styling */}
-      <div className="px-4 py-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200 hover:shadow-md">
-        <NotificationsButton
-          initialState={{ unreadCount: unreadNotificationsCount }}
-        />
-      </div>
-      
-      {/* Wrap MessagesButton in a div to apply styling */}
-      <div className="px-4 py-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200 hover:shadow-md">
-        <MessagesButton 
-          initialState={{ unreadCount: unreadMessagesCount }}
-        />
-      </div>
-      
+      <NotificationsButton
+        initialState={{ unreadCount: unreadNotificationsCount }}
+      />
+      <MessagesButton initialState={{ unreadCount: unreadMessagesCount }} />
       <Button
         variant="ghost"
-        className="flex items-center justify-start gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200 hover:shadow-md"
+        className="flex items-center justify-start gap-3"
         title="Bookmarks"
         asChild
       >
         <Link href="/bookmarks">
-          <Bookmark className="w-5 h-5" />
-          <span className="hidden lg:inline font-medium">Bookmarks</span>
+          <Bookmark />
+          <span className="hidden lg:inline">Bookmarks</span>
         </Link>
       </Button>
     </div>
