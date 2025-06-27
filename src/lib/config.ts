@@ -27,3 +27,8 @@ const getTimeoutConfig = () => {
 };
 
 export const ZEGO_CONFIG = getTimeoutConfig();
+
+export const siteConfig = {
+  name: "Ultron",
+  description: "The social media app for power nerds",
+};

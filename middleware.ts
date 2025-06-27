@@ -15,8 +15,8 @@ export async function middleware(request: NextRequest) {
     '/register', 
     '/api/auth',
     '/api/uploadthing', // Redundant but explicit
-     'api/character-chat',
-     
+     '/api/character-chat',
+
   ];
 
   const isPublicRoute = publicRoutes.some(route => 

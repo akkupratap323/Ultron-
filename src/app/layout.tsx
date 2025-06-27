@@ -10,6 +10,7 @@ import "./globals.css";
 import ReactQueryProvider from "./ReactQueryProvider";
 import SessionProvider from "./(main)/SessionProvider";
 import { validateRequest } from "@/auth";
+import { siteConfig } from "@/lib/config";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -22,10 +23,43 @@ const geistMono = localFont({
 
 export const metadata: Metadata = {
   title: {
-    template: "%s | Ultron",
-    default: "Ultron",
+    template: `%s | ${siteConfig.name}`,
+    default: siteConfig.name,
   },
-  description: "The social media app for powernerds",
+  description: siteConfig.description,
+  metadataBase: new URL(
+    process.env.NODE_ENV === "production"
+      ? "https://www.ultron.com"
+      : "http://localhost:3000",
+  ),
+  openGraph: {
+    title: {
+      template: `%s | ${siteConfig.name}`,
+      default: siteConfig.name,
+    },
+    description: siteConfig.description,
+    siteName: siteConfig.name,
+    // url: "https://www.ultron.com",
+    // images: [],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: {
+      template: `%s | ${siteConfig.name}`,
+      default: siteConfig.name,
+    },
+    description: siteConfig.description,
+    // images: [],
+    // creator: "@subham",
+  },
+  icons: [
+    {
+      url: "/favicon.ico",
+      rel: "icon",
+      sizes: "any",
+      type: "image/x-icon",
+    },
+  ],
 };
 
 export default async function RootLayout({
